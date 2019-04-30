@@ -1,1 +1,7 @@
 paper/
+catalogs/
+cubes/
+glue/
+.ipynb_checkpoints/
+.DS_Store
+
