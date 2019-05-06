@@ -54,37 +54,41 @@ def main():
     #         break
 
 
-    t_davis_nohops = Table.read("../catalogs/davis09_jets_without_hops.txt", format='ascii.tab')
-    # print(t_davis_nohops["RAJ2000"] )
-    c_davis_nohops = SkyCoord(t_davis_nohops["_RAJ2000"], t_davis_nohops["_DEJ2000"], unit='deg')
+### Plot stamps around H2 flows from Davis et al. 2009.
 
-    for c,davis_id in zip(c_davis_nohops, t_davis_nohops['SMZ']):
-        if davis_id == 124:
-        # if True:
-            try:
-                blue_vel = 5*u.km/u.s
-                red_vel = 9.5*u.km/u.s
-                dofit=1
-                width=height=20*u.arcmin
-                show_name=0
-                # print(hops_id)
-                plot_finder(cube12, coord=c,
-                        fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
-                        nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
-                        figname="finders/davis_nohops/finder_{}{}_{}.pdf".format("davis",davis_id,"fit12co_2sigma_fit15arcsec"),
-                        region_width=width, region_height=height,
-                        blue_levels=np.arange(5, 50, 5), red_levels=np.arange(5., 50, 5),
-                        show_contours=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
-                        show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
-                        interactive=False
-                        ) 
-            except ValueError as ve:
-                print("Region is outside of cube, moving to next source.")
-            except IndexError as ie:
-                print("Region is outside of cube, moving to next source.")
-            else:
-                pass
+    # t_davis_nohops = Table.read("../catalogs/davis09_jets_without_hops.txt", format='ascii.tab')
+    # # print(t_davis_nohops["RAJ2000"] )
+    # c_davis_nohops = SkyCoord(t_davis_nohops["_RAJ2000"], t_davis_nohops["_DEJ2000"], unit='deg')
+
+    # for c,davis_id in zip(c_davis_nohops, t_davis_nohops['SMZ']):
+    #     if davis_id == 124:
+    #     # if True:
+    #         try:
+    #             blue_vel = 5*u.km/u.s
+    #             red_vel = 9.5*u.km/u.s
+    #             dofit=1
+    #             width=height=20*u.arcmin
+    #             show_name=0
+    #             # print(hops_id)
+    #             plot_finder(cube12, coord=c,
+    #                     fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
+    #                     nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
+    #                     figname="finders/davis_nohops/finder_{}{}_{}.pdf".format("davis",davis_id,"fit12co_2sigma_fit15arcsec"),
+    #                     region_width=width, region_height=height,
+    #                     blue_levels=np.arange(5, 50, 5), red_levels=np.arange(5., 50, 5),
+    #                     show_contours=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
+    #                     show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
+    #                     interactive=False
+    #                     ) 
+    #         except ValueError as ve:
+    #             print("Region is outside of cube, moving to next source.")
+    #         except IndexError as ie:
+    #             print("Region is outside of cube, moving to next source.")
+    #         else:
+    #             pass
                 # break
+
+### Plot stamps around HOPS protostars.
 
     # for c,hops_id in zip(coords, t['HOPS']):
     #     if hops_id == 409:
@@ -113,9 +117,76 @@ def main():
     #             break
             
 
+    blue_left = [-2, -1, 0, 1, 2, 3, 4]
+    red_left = [18, 17, 16, 15, 14, 13, 12]
+### Plot stamps around OMC-1 South
+    for blue, red in zip(blue_left, red_left): 
+        blue_vel = [blue,blue+2]*u.km/u.s
+        red_vel = [red,red+2]*u.km/u.s
+        dofit=0
+        width=height=10*u.arcmin
+        start = 5
+        stop = 50
+        step = 10
+        contour_levels = np.arange(start, stop, step)
+        show_name=0
+        if dofit:
+            figname = "finders/omc1/fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
+        elif len(blue_vel) == 1:
+            figname = "finders/omc1/blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
+                start, stop, step)
+        else:
+            figname = "finders/omc1/blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel[0].value, blue_vel[1].value,
+             red_vel[0].value, red_vel[1].value, width.value, start, stop, step)
+        # print(hops_id)
+        c = SkyCoord("5h35m14s", "-5d23m00s")
+        plot_finder(cube12, coord=c,
+                fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
+                nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
+                figname=figname,
+                region_width=width, region_height=height,
+                blue_levels=contour_levels, red_levels=contour_levels,
+                show_contours=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
+                show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
+                interactive=False
+                ) 
+
+### Plot stamps around Orion-KL
+    for blue, red in zip(blue_left, red_left): 
+        blue_vel = [blue,blue+2]*u.km/u.s
+        red_vel = [red,red+2]*u.km/u.s
+        dofit=0
+        width=height=10*u.arcmin
+        start = 5
+        stop = 50
+        step = 10
+        contour_levels = np.arange(start, stop, step)
+        show_name=0
+        if dofit:
+            figname = "finders/omc1/fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
+        elif len(blue_vel) == 1:
+            figname = "finders/omc1/blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
+                start, stop, step)
+        else:
+            figname = "finders/omc1/blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel[0].value, blue_vel[1].value,
+             red_vel[0].value, red_vel[1].value, width.value, start, stop, step)
+        # print(hops_id)
+        c = SkyCoord("5h35m14s", "-5d23m00s")
+        plot_finder(cube12, coord=c,
+                fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
+                nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
+                figname=figname,
+                region_width=width, region_height=height,
+                blue_levels=contour_levels, red_levels=contour_levels,
+                show_contours=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
+                show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
+                interactive=False
+                ) 
+
 # def plot_stamps():
 
 # def integrate_rms():
+
 
 def calc_linewings(cube, spec_method=SpectralCube.mean,
         autoguess=True, gaussian_kwargs=dict(), fit_kwargs=dict(),
