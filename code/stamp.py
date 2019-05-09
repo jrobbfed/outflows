@@ -116,30 +116,33 @@ def main():
     #         else:
     #             break
             
-
-    blue_left = [-2, -1, 0, 1, 2, 3, 4]
-    red_left = [18, 17, 16, 15, 14, 13, 12]
 ### Plot stamps around OMC-1 South
-    for blue, red in zip(blue_left, red_left): 
+
+    blue_step = red_step = 1
+    blue_left = np.arange(-2
+        , 4+blue_step, blue_step)
+    red_left = np.arange(11, 17+red_step, red_step)[::-1]
+    
+    for i, (blue, red) in enumerate(zip(blue_left, red_left)): 
         blue_vel = [blue,blue+2]*u.km/u.s
         red_vel = [red,red+2]*u.km/u.s
         dofit=0
-        width=height=10*u.arcmin
-        start = 5
-        stop = 50
+        width=height=5*u.arcmin
+        start = 10
+        stop = 100
         step = 10
         contour_levels = np.arange(start, stop, step)
         show_name=0
         if dofit:
-            figname = "finders/omc1/fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
+            figname = "finders/omc1/omc1s/omc1s_fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
         elif len(blue_vel) == 1:
-            figname = "finders/omc1/blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
+            figname = "finders/omc1/omc1s/omc1s_blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
                 start, stop, step)
         else:
-            figname = "finders/omc1/blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel[0].value, blue_vel[1].value,
+            figname = "finders/omc1/omc1s/{:04}_omc1s_blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(i, blue_vel[0].value, blue_vel[1].value,
              red_vel[0].value, red_vel[1].value, width.value, start, stop, step)
         # print(hops_id)
-        c = SkyCoord("5h35m14s", "-5d23m00s")
+        c = SkyCoord("5h35m14s", "-5d24m00s")
         plot_finder(cube12, coord=c,
                 fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
                 nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
@@ -148,30 +151,39 @@ def main():
                 blue_levels=contour_levels, red_levels=contour_levels,
                 show_contours=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
                 show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
+                show_legend=True,
+                catalogs=["../catalogs/davis09_h2jets.fits",
+                          "../catalogs/omc1s_cores_palau18.vot"],
+                catalog_kwargs=[dict(marker="+", s=60, color='black', lw=1, zorder=3, label=r"H$_2$ Flows"),
+                                dict(marker=".", s=20, color='black', lw=1, zorder=3, label=r"1.3mm Cores")],
                 interactive=False
-                ) 
+                )
 
 ### Plot stamps around Orion-KL
+    blue_step = red_step = 1
+    blue_left = np.arange(-2, 4+blue_step, blue_step)
+    red_left = np.arange(12, 18+red_step, red_step)[::-1]
+
     for blue, red in zip(blue_left, red_left): 
         blue_vel = [blue,blue+2]*u.km/u.s
         red_vel = [red,red+2]*u.km/u.s
         dofit=0
-        width=height=10*u.arcmin
-        start = 5
-        stop = 50
-        step = 10
+        width=height=5*u.arcmin
+        start = 10
+        stop = 200
+        step = 20
         contour_levels = np.arange(start, stop, step)
         show_name=0
         if dofit:
-            figname = "finders/omc1/fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
+            figname = "finders/omc1/orionkl/orionkl_fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
         elif len(blue_vel) == 1:
-            figname = "finders/omc1/blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
+            figname = "finders/omc1/orionkl/orionkl_blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
                 start, stop, step)
         else:
-            figname = "finders/omc1/blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel[0].value, blue_vel[1].value,
+            figname = "finders/omc1/orionkl/orionkl_blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel[0].value, blue_vel[1].value,
              red_vel[0].value, red_vel[1].value, width.value, start, stop, step)
         # print(hops_id)
-        c = SkyCoord("5h35m14s", "-5d23m00s")
+        c = SkyCoord("5h35m14s", "-5d22m30s")
         plot_finder(cube12, coord=c,
                 fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
                 nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
@@ -228,7 +240,7 @@ def plot_finder(cube,
 
         #Arguments to choose what to show.
         show_contours=True, show_catalogs=True, show_fitcircle=True, show_outflows=True,
-        show_spectrum=True, show_fit=True, show_vrange=True,
+        show_spectrum=True, show_fit=True, show_vrange=True, show_legend=False,
 
         #Catalog arguments.
         catalogs=["../catalogs/hops.fits", "../catalogs/davis09_h2jets.fits"],
@@ -333,6 +345,8 @@ def plot_finder(cube,
             ax_cat = plot_catalog(catalog, ax=ax_cat,
                     scatter_kwargs=kwargs,
                     autoscale=False)
+        if show_legend:
+            ax_cat.legend()
 
     
     if show_outflows:
@@ -689,7 +703,12 @@ def plot_catalog(catalog, wcs=None, ax=None, plot_file="plot_catalog.pdf",
     ra, dec = cat[ra_colname], cat[dec_colname]
 
     try:
-        ax.scatter(ra, dec, transform=ax.get_transform('world'), **scatter_kwargs)
+        c = SkyCoord(ra, dec)
+    except u.UnitsError:
+        c = SkyCoord(ra, dec, unit=[u.hourangle, u.deg])
+
+    try:
+        ax.scatter(c.ra.to(u.deg).value, c.dec.to(u.deg).value, transform=ax.get_transform('world'), **scatter_kwargs)
     except TypeError as te:
         print("Axes needs to be WCSAxes with world transform.")
     
