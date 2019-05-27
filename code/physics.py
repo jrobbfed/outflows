@@ -1,778 +1,48 @@
+### Adapted from code for expanding shells paper.
+###
 from spectral_cube import SpectralCube
 import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
 import glob
 from astropy.io import ascii
-import shells
-#Calculate various physical quantities from
-#spectral cubes, spectra, and shell parameters.
-nro_12co = "../nro_maps/12CO_20170514_FOREST-BEARS_spheroidal_grid7.5_dV0.099kms_xyb_YS_regrid0.11kms_reproj.fits"
-nro_13co = "../nro_maps/13CO_BEARS-FOREST_20170913_7.5grid_Spheroidal_Tmb_0.11kms_xy_YS.fits" 
-nro_13co_divided = "../nro_maps/13CO_20170518_FOREST-BEARS_spheroidal_grid7.5_dV0.11kms_xyb_YS_regridto12CO_divide1.4.fits" 
+from astropy.table import Table
+from astropy.coordinates import SkyCoord
+from regions import CircleSkyRegion, RectangleSkyRegion
+#Distance to Orion (Menten et al.)
+dist = 414*u.pc
+#CARMA-NRO Orion Map Noise Values
+sig12, sig13, sig18 = 0.86*u.K, 0.64*u.K, 0.47*u.K #From Kong et al. 2018a
 
+path_12 = "../cubes/mask_imfit_13co_pix_2_Tmb.fits"
+path_13 = "../cubes/mask_imfit_12co_pix_2_Tmb.fits"
+path_13_regrid_to_12 = "../cubes/mask_imfit_13co_pix_2_Tmb_regrid12co.fits"
 
-
-#Old numbering
-# best_shells = [3,6,9,11,17,18,21,24,25,30,36,37]
-# north_shells = [18,19,20,21,22,23,24,29,40]
-# central_shells = [16,17,26,30,36,38,39]
-# south_shells = [3,4,5,6,7,15,28,33,34,35]
-# l1641_shells = [1,2,8,9,10,11,12,13,14,25,27,31,32,37,41,42]
-#New N-S ordering
-best_shells = [1,5,6,7,11,13,25,28,32,37,40,42]
-north_shells = [1,2,3,4,5,6,7,8,9]
-central_shells = [10,11,12,13,14,15,16]
-south_shells = [17,18,19,20,21,22,23,24,25,26]
-l1641_shells = [27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42]
-
-berne_dec = [-5.8*u.deg, -4.95*u.deg]
-berne_ra = [5.62*15*u.deg, 5.554*15*u.deg]
 def main():
-    import shell_model
-    import shells
-    dist = 414*u.pc
-    # north_energy, central_energy, south_energy, l1641n_energy = [
-    # 7.8e46, 2e47, 1.4e47, 1.6e47]
-    # north_m, central_m, south_m, l1641n_m = np.array([4048, 3736, 5001, 5196])*u.Msun
-    # north_r, central_r, south_r, l1641n_r = np.array([2, 1, 2.5, 2])*u.pc
-    # north_sigma, central_sigma, south_sigma, l1641n_sigma = np.array([1.6, 1.7, 1.6, 1.6])*u.km/u.s
-    # north_dpdt, central_dpdt, south_dpdt, l1641n_dpdt = dpdt(north_m, north_r, north_sigma), dpdt(central_m, central_r, central_sigma), dpdt(south_m, south_r, south_sigma), dpdt(l1641n_m, l1641n_r, l1641n_sigma)
+    from stamp import extract_subcube
+    c12 = SpectralCube.read(path_12)
+    c13 = SpectralCube.read(path_13)
+    c13_regrid = SpectralCube.read(path_13_regrid_to_12)
+    t_hops = Table.read("../../catalogs/hops.fits")
+    sig12, sig13 = 0.86*u.K, 0.64*u.K
+
+    hops_169 = t_hops[t_hops["HOPS"] == 169][0]
+    coord = SkyCoord(hops_169["RAJ2000"], hops_169["DEJ2000"], unit=u.deg)
+    width=height=4*u.arcmin
+    vmin, vmax = -2*u.km/u.s, 4.7*u.km/u.s
+    sub12 = extract_subcube(c12, region_class=RectangleSkyRegion,
+                          region_kwargs=dict(center=coord, width=width, height=height))
+    sub13 = extract_subcube(c13, region_class=RectangleSkyRegion,
+                            region_kwargs=dict(center=coord, width=width, height=height))
+    sub13_regrid = extract_subcube(c13_regrid, region_class=RectangleSkyRegion,
+                            region_kwargs=dict(center=coord, width=width, height=height))
+    rms12 = rms(sub12, velocity_range=[[-2,0]*u.km/u.s, [18,20]*u.km/u.s])
+    print(rms12, sig12)
+    rms13 = rms(sub13, velocity_range=[[0, 2]*u.km/u.s, [15, 17]*u.km/u.s])
+    print(rms13, sig13)
+    rms13_regrid = rms(sub13_regrid, velocity_range=[[0, 2]*u.km/u.s, [15, 17]*u.km/u.s])
+    print(rms13_regrid)
 
-    # turbs = [north_energy, central_energy, south_energy, l1641n_energy]
-    # turb_dpdt = [north_dpdt, central_dpdt, south_dpdt, l1641n_dpdt]
-    # print(turbs, turb_dpdt)
-    # table_shell_parameters(param_file="shell_parameters_full_NtoS.txt", best_n=best_shells,
-    #     table_name="NEW_shell_parameters_NtoS_tex_texp.txt", usecols=[0,1,2,3,4,5,6,7,8], show_texp=True)
-    # table_shell_physics(param_file="shell_parameters_full_NtoS.txt", scale_energy=1e44, scale_mdot=1e-7, scale_L=1e31, scale_Edot=1e31,
-    #   scale_dpdt=1e-4, low_name="_properties_low_1213co5sig_NtoSorder",
-    #     mid_name="_properties_mid_1213co5sig_NtoSorder", hi_name="_properties_hi_1213co5sig_NtoSorder",
-    #     table_name="shell_physics_all_5sig_NtoS.txt")
-    table_subregions(scale_energy=1e46, table_name='subregions.tex')
-
-
-    plot_physicsrange(column=1, plotname="../paper/massrange_all.pdf", low_name="_properties_low_1213co5sig_NtoSorder",
- mid_name="_properties_mid_1213co5sig_NtoSorder", hi_name="_properties_hi_1213co5sig_NtoSorder")
-    plot_physicsrange(column=2, plotname="../paper/momentumrange_all.pdf", low_name="_properties_low_1213co5sig_NtoSorder",
- mid_name="_properties_mid_1213co5sig_NtoSorder", hi_name="_properties_hi_1213co5sig_NtoSorder")
-    plot_physicsrange(column=3, plotname="../paper/energyrange_all.pdf", low_name="_properties_low_1213co5sig_NtoSorder",
- mid_name="_properties_mid_1213co5sig_NtoSorder", hi_name="_properties_hi_1213co5sig_NtoSorder",
- scale=1e46)
-
-    # plot_physicsrange(column=1, plotname=None, best_n=north_shells)
-    # plot_physicsrange(column=2, plotname=None, best_n=north_shells)
-    # plot_physicsrange(column=3, plotname=None, best_n=north_shells)
-    # plot_physicsrange(column=3, plotname=None, best_n=set(north_shells).intersection(best_shells))
-    # # plot_physicsrange(column=1, plotname=None, best_n=central_shells)
-    # # plot_physicsrange(column=2, plotname=None, best_n=central_shells)
-    # plot_physicsrange(column=3, plotname=None, best_n=central_shells)
-    # plot_physicsrange(column=3, plotname=None, best_n=set(central_shells).intersection(best_shells))    
-    # # plot_physicsrange(column=1, plotname=None, best_n=south_shells)
-    # # plot_physicsrange(column=2, plotname=None, best_n=south_shells)
-    # plot_physicsrange(column=3, plotname=None, best_n=south_shells)
-    # plot_physicsrange(column=3, plotname=None, best_n=set(south_shells).intersection(best_shells))    
-    # # plot_physicsrange(column=1, plotname=None, best_n=south_shells)
-    # print(plot_physicsrange(column=1, plotname=None, best_n=l1641_shells))
-    # print(plot_physicsrange(column=2, plotname=None, best_n=l1641_shells))
-    # print("Energy: ", plot_physicsrange(column=3, plotname=None, best_n=l1641_shells))
-    # plot_physicsrange(column=3, plotname=None, best_n=set(l1641_shells).intersection(best_shells))    
-
-    # all_low_tables = glob.glob("shell*properties*low_13co_1.4.txt")
-    # all_hi_tables = glob.glob("shell*properties*hi_13co_1.4.txt")
-    # robust_low_tables = glob.glob("shell[369]_properties_low_13co_1.4.txt")\
-    #  + glob.glob("shell1[178]_properties_low_13co_1.4.txt")\
-    #  + glob.glob("shell2[145]_properties_low_13co_1.4.txt")\
-    #  + glob.glob("shell3[078]_properties_low_13co_1.4.txt")
-    # robust_hi_tables = glob.glob("shell[369]_properties_hi_13co_1.4.txt")\
-    #  + glob.glob("shell1[178]_properties_hi_13co_1.4.txt")\
-    #  + glob.glob("shell2[145]_properties_hi_13co_1.4.txt")\
-    #  + glob.glob("shell3[078]_properties_hi_13co_1.4.txt")
-
-    # all_low_tables = glob.glob("shell*properties*low.txt")
-    # all_hi_tables = glob.glob("shell*properties*hi.txt")
-    # robust_low_tables = glob.glob("shell[369]_properties_low.txt")\
-    #  + glob.glob("shell1[178]_properties_low.txt")\
-    #  + glob.glob("shell2[145]_properties_low.txt")\
-    #  + glob.glob("shell3[078]_properties_low.txt")
-    # robust_hi_tables = glob.glob("shell[369]_properties_hi.txt")\
-    #  + glob.glob("shell1[178]_properties_hi.txt")\
-    #  + glob.glob("shell2[145]_properties_hi.txt")\
-    #  + glob.glob("shell3[078]_properties_hi.txt")
-    # mass_all = hist_physics(table_list=all_low_tables+all_hi_tables,
-    #     column=1, table_list_shaded=robust_low_tables+robust_hi_tables,
-    #     plotname='hist_mass_all.png')
-    # momentum_all = hist_physics(table_list=all_low_tables+all_hi_tables,
-    #     column=2, table_list_shaded=robust_low_tables+robust_hi_tables,
-    #     plotname='hist_momentum_all.png')
-    # energy_all = hist_physics(table_list=all_low_tables+all_hi_tables,
-    #     column=3, table_list_shaded=robust_low_tables+robust_hi_tables,
-    #     plotname='hist_energy_all.png')
-
-    # mass_all_low = hist_physics(table_list=all_low_tables, column=1,
-    #     plotname='hist_mass_low_all_new13co.png', table_list_shaded=robust_low_tables
-    #     #xlim=[-50,300]
-    #     )
-    # mass_all_hi = hist_physics(table_list=all_hi_tables, column=1,
-    #     plotname='hist_mass_hi_all_new13co.png', table_list_shaded=robust_hi_tables
-    #     #xlim=[-50,300]
-    #     )
-    # momentum_all_low = hist_physics(table_list=all_low_tables, column=2,
-    #     plotname='hist_momentum_low_all_new13co.png', table_list_shaded=robust_low_tables)
-    # momentum_all_hi = hist_physics(table_list=all_hi_tables, column=2,
-    #     plotname='hist_momentum_hi_all_new13co.png', table_list_shaded=robust_hi_tables)
-    # energy_all_low = hist_physics(table_list=all_low_tables, column=3,
-    #     plotname='hist_energy_low_all_new13co.png', table_list_shaded=robust_low_tables)
-    # energy_all_hi = hist_physics(table_list=all_hi_tables, column=3,
-    #     plotname='hist_energy_hi_all_new13co.png', table_list_shaded=robust_hi_tables)
-
-    # print("Total for all shells:\n Mass - {} to {} Msun\n\
-    #  Momentum - {} to {} Msun km/s\n\
-    #  Energy - {} to {} erg\n".format(
-    #     mass_all_low,mass_all_hi,
-    #     momentum_all_low,momentum_all_hi,
-    #     energy_all_low,energy_all_hi))
-
-
-    # mass_robust_low = hist_physics(table_list=robust_low_tables, column=1,
-    #     plotname='hist_mass_low_robust_new13co.png')
-    # mass_robust_hi = hist_physics(table_list=robust_hi_tables, column=1,
-    #     plotname='hist_mass_hi_robust_new13co.png')
-    # momentum_robust_low = hist_physics(table_list=robust_low_tables, column=2,
-    #     plotname='hist_momentum_low_robust_new13co.png')
-    # momentum_robust_hi = hist_physics(table_list=robust_hi_tables, column=2,
-    #     plotname='hist_momentum_hi_robust_new13co.png')
-    # energy_robust_low = hist_physics(table_list=robust_low_tables, column=3,
-    #     plotname='hist_energy_low_robust_new13co.png')
-    # energy_robust_hi = hist_physics(table_list=robust_hi_tables, column=3,
-    #     plotname='hist_energy_hi_robust_new13co.png')
-
-    # print("Total for most confident 12 shells:\n Mass - {} to {} Msun\n\
-    #  Momentum - {} to {} Msun km/s\n\
-    #  Energy - {} to {} erg\n".format(
-    #     mass_robust_low,mass_robust_hi,
-    #     momentum_robust_low,momentum_robust_hi,
-
-
-    #     energy_robust_low,energy_robust_hi))
-    # cube_12co = SpectralCube.read(nro_12co)
-    # cube_13co = SpectralCube.read(nro_13co)
-    #cube_13co = SpectralCube.read(nro_13co_divided)
-    #return
-
-    # cube_12co = SpectralCube.read(nro_12co)
-    # cube_13co = SpectralCube.read(nro_13co)
-
-    # shell_list = shells.get_shells(region_file="../shell_candidates/AllShells_NtoS_old.reg",
-    # velocity_file="../shell_candidates/AllShells_vrange_NtoS.txt")
-
-    # for n in range(12,13): #shell = shell_list[n] print("Doing Shell {}".format(n)) shell = shell_list[n-1] print(n, shell.ra,shell.dec) # break #     params = np.loadtxt("shell_parameters_full_NtoS.txt") params = params[params[:,0] == 1.*n, 1:][0] r_best, r_sig = params[0], params[1] dr_best, dr_sig = params[2], params[3] vexp_best, vexp_sig = params[4], params[5] v0_best, v0_sig = params[6], params[7] #     dv = 0.1 v0_sample = np.arange(v0_best-v0_sig, v0_best+v0_sig, dv) print(v0_sample) N = v0_sample.size print(N) #     ## Loop over several v0 values for the minimum r, dr, vexp.  properties_low = np.empty((N, 4)) r = (r_best - r_sig) * u.pc dr = (dr_best - dr_sig) * u.pc vexp = (vexp_best - vexp_sig) * u.km/u.s #     for i,v0 in enumerate(v0_sample): #         v0 = v0 * u.km/u.s   # v0 = 14.25*u.km/u.s print(shell.ra, shell.dec, r, dr, vexp, v0) try: mass, momentum, energy = calc_physics( ra=shell.ra, dec=shell.dec, r=r, dr=dr, vexp=vexp, v0=v0, dist=dist, cube_12co=cube_12co, cube_13co=cube_13co, shell=True, plot=False, shell_snr_cutoff=5.) properties_low[i] = [v0.value, mass.value, momentum.value, energy.value] #             print("Shell Physical Properties:") print("------------------------------") print("Mass = {}".format(mass)) print("Expansion Velocity = {}".format(vexp)) print("Momentum = {}".format(momentum)) print("Energy = {}".format(energy)) except ValueError: print("Shell {} failed due to mismatched data shape.".format(n)) #     np.savetxt("shell{}_properties_low_1213co5sig_NtoSorder.txt".format(n), properties_low) #     ### Loop over several v0 values for the mid r, dr, vexp.  properties_mid = np.empty((N, 4)) r = (r_best) * u.pc dr = (dr_best) * u.pc vexp = (vexp_best) * u.km/u.s #     for i,v0 in enumerate(v0_sample): #         v0 = v0 * u.km/u.s   # v0 = 14.25*u.km/u.s print(shell.ra, shell.dec, r, dr, vexp, v0) try: mass, momentum, energy = calc_physics( ra=shell.ra, dec=shell.dec, r=r, dr=dr, vexp=vexp, v0=v0, dist=dist, cube_12co=cube_12co, cube_13co=cube_13co, shell_snr_cutoff=5.) properties_mid[i] = [v0.value, mass.value, momentum.value, energy.value] #             print("Shell Physical Properties:") print("------------------------------") print("Mass = {}".format(mass)) print("Expansion Velocity = {}".format(vexp)) print("Momentum = {}".format(momentum)) print("Energy = {}".format(energy)) except ValueError: print("Shell {} failed due to mismatched data shape.".format(n)) #     np.savetxt("shell{}_properties_mid_1213co5sig_NtoSorder.txt".format(n), properties_mid) #     ## Loop over v0 values with the maximum r, dr, vexp.  properties_hi = np.empty((N, 4)) r = (r_best + r_sig) * u.pc dr = (dr_best + dr_sig) * u.pc vexp = (vexp_best + vexp_sig) * u.km/u.s for i,v0 in enumerate(v0_sample): #         v0 = v0 * u.km/u.s   print(shell.ra, shell.dec, r, dr, vexp, v0) try: mass, momentum, energy = calc_physics( ra=shell.ra, dec=shell.dec, r=r, dr=dr, vexp=vexp, v0=v0, dist=dist, cube_12co=cube_12co, cube_13co=cube_13co, shell_snr_cutoff=5.) properties_hi[i] = [v0.value, mass.value, momentum.value, energy.value] #             print("Shell Physical Properties:") print("------------------------------") print("Mass = {}".format(mass)) print("Expansion Velocity = {}".format(vexp)) print("Momentum = {}".format(momentum)) print("Energy = {}".format(energy)) except ValueError: print("Shell {} failed due to mismatched data shape.".format(n)) #     np.savetxt("shell{}_properties_hi_1213co5sig_NtoSorder.txt".format(n), properties_hi)
-
-###########################################-----------------------------------
-
-    # # plt.figure()
-    # plt.imshow(subcube_shell_12co_correct.moment0().data, interpolation='none')
-    # plt.colorbar()
-    # plt.title("Opacity-Corrected Integrated 12CO in K*m/s")
-    # plt.savefig("corrected_12co.png")
-
-
-    ## Calculate physics of cube subregions.
-
-    # cube_12co = SpectralCube.read(nro_12co)
-    # cube_13co = SpectralCube.read(nro_13co)
-    # north_12co = subcube_region(cube_12co, region_index=2)
-    # north_13co = subcube_region(cube_13co, region_index=2)
-    # north_mass, north_momentum, north_energy = calc_physics(
-    #     cube_12co=north_12co, cube_13co=north_13co, shell=False
-    #     ,shell_snr_cutoff=5., average_Tex=False, linewidth_mode='sigma3D'
-    #     )
-
-    # central_12co = subcube_region(cube_12co, region_index=9)
-    # central_13co = subcube_region(cube_13co, region_index=9)
-    # central_mass, central_momentum, central_energy = calc_physics(
-    #     cube_12co=central_12co, cube_13co=central_13co, shell=False
-    #     ,shell_snr_cutoff=5., average_Tex=False, linewidth_mode='sigma3D'
-    #     )
-
-    # south_12co = subcube_region(cube_12co, region_index=7)
-    # south_13co = subcube_region(cube_13co, region_index=7)
-    # south_mass, south_momentum, south_energy = calc_physics(
-    #     cube_12co=south_12co, cube_13co=south_13co, shell=False
-    #     ,shell_snr_cutoff=5., average_Tex=False, linewidth_mode='sigma3D'
-    #     )
-
-    # l1641n_12co = subcube_region(cube_12co, region_index=8)
-    # l1641n_13co = subcube_region(cube_13co, region_index=8)
-    # l1641n_mass, l1641n_momentum, l1641n_energy = calc_physics(
-    #     cube_12co=l1641n_12co, cube_13co=l1641n_13co, shell=False
-    #     ,shell_snr_cutoff=5., average_Tex=False, linewidth_mode='sigma3D'
-    #     )
-
-    # berne_12co = cube_12co.subcube(berne_ra[0], berne_ra[1], berne_dec[0], berne_dec[1])
-    # berne_13co = cube_13co.subcube(berne_ra[0], berne_ra[1], berne_dec[0], berne_dec[1])
-    # # berne_mass, berne_momentum, berne_energy = calc_physics(
-    # #     cube_12co=berne_12co, cube_13co=berne_13co, shell=False
-    # #     ,shell_snr_cutoff=5., linewidth_mode='sigma'
-    # #     )
-    # # print("Using sigma: {} {} {}".format(berne_mass.to(u.Msun), berne_momentum.to(u.Msun*u.km/u.s), berne_energy.to(u.erg)))
-
-    # berne_mass, berne_momentum, berne_energy = calc_physics(
-    #     cube_12co=berne_12co, cube_13co=berne_13co, shell=False
-    #     ,shell_snr_cutoff=5., linewidth_mode='sigma3D', plot=False,
-    #     average_Tex=False)
-    # print("Using FWHM: {} {} {}".format(berne_mass.to(u.Msun), berne_momentum.to(u.Msun*u.km/u.s), berne_energy.to(u.erg)))
-
-
-    # for mass in [north_mass, central_mass, south_mass, l1641n_mass]:
-    #     print(u.Quantity(mass).to(u.Msun))
-    # for momentum in [north_mass, central_mass, south_mass, l1641n_mass]:
-    #     print(u.Quantity(mass).to(u.Msun))
-    # for energy in [north_energy, central_energy, south_energy, l1641n_energy]:
-    #      print(u.Quantity(energy).to(u.erg))
-
-# def table_shell_physics
-
-
-    cube_12co = SpectralCube.read(nro_12co)
-    cube_13co = SpectralCube.read(nro_13co)
-
-    # shell_list = shells.get_shells()
-    shell_list = shells.get_shells(velocity_file="../shell_candidates/AllShells_vrange_NtoS.txt",
-            region_file="../shell_candidates/AllShells_NtoS.reg")
-
-    # for n in range(39,40):
-    #     #shell = shell_list[n]
-    #     print("Doing Shell {}".format(n))
-    #     shell = shell_list[n-1]
-
-
-    #     params = np.loadtxt("shell_parameters_full_NtoS_Shell39Updated.txt")
-    #     params = params[params[:,0] == 1.*n, 1:][0]
-    #     r_best, r_sig = params[0], params[1]
-    #     dr_best, dr_sig = params[2], params[3]
-    #     vexp_best, vexp_sig = params[4], params[5]
-    #     v0_best, v0_sig = params[6], params[7]
-
-    #     dv = 0.1
-    #     v0_sample = np.arange(v0_best-v0_sig, v0_best+v0_sig+dv, dv)
-    #     N = v0_sample.size
-    #     print(N)
-
-    #     ### Loop over several v0 values for the minimum r, dr, vexp.
-    #     properties_low = np.empty((N, 4))
-    #     r = (r_best - r_sig) * u.pc
-    #     dr = (dr_best - dr_sig) * u.pc
-    #     vexp = (vexp_best - vexp_sig) * u.km/u.s
-        
-    #     for i,v0 in enumerate(v0_sample):
-
-    #         v0 = v0 * u.km/u.s   
-    #         # v0 = 14.25*u.km/u.s 
-    #         print(shell.ra, shell.dec, r, dr, vexp, v0) 
-    #         try:
-    #             mass, momentum, energy = calc_physics(
-    #             ra=shell.ra, dec=shell.dec, r=r, dr=dr, vexp=vexp, v0=v0, dist=dist,
-    #             cube_12co=cube_12co, cube_13co=cube_13co, shell=True, plot=False, shell_snr_cutoff=5.)
-    #             properties_low[i] = [v0.value, mass.value, momentum.value, energy.value]
-
-    #             print("Shell Physical Properties:")
-    #             print("------------------------------")
-    #             print("Mass = {}".format(mass))
-    #             print("Expansion Velocity = {}".format(vexp))
-    #             print("Momentum = {}".format(momentum))
-    #             print("Energy = {}".format(energy))
-    #         except ValueError:
-    #             print("Shell {} failed due to mismatched data shape.".format(n))
-        
-    #     np.savetxt("shell{}_properties_low_1213co5sig_NtoS_NewShell39.txt".format(n), properties_low)
-
-    #     ### Loop over several v0 values for the mid r, dr, vexp.
-    #     properties_mid = np.empty((N, 4))
-    #     r = (r_best) * u.pc
-    #     dr = (dr_best) * u.pc
-    #     vexp = (vexp_best) * u.km/u.s
-   
-    #     for i,v0 in enumerate(v0_sample):
-
-    #         v0 = v0 * u.km/u.s   
-    #         # v0 = 14.25*u.km/u.s 
-    #         print(shell.ra, shell.dec, r, dr, vexp, v0) 
-    #         try:
-    #             mass, momentum, energy = calc_physics(
-    #             ra=shell.ra, dec=shell.dec, r=r, dr=dr, vexp=vexp, v0=v0, dist=dist,
-    #             cube_12co=cube_12co, cube_13co=cube_13co, shell_snr_cutoff=5.)
-    #             properties_mid[i] = [v0.value, mass.value, momentum.value, energy.value]
-
-    #             print("Shell Physical Properties:")
-    #             print("------------------------------")
-    #             print("Mass = {}".format(mass))
-    #             print("Expansion Velocity = {}".format(vexp))
-    #             print("Momentum = {}".format(momentum))
-    #             print("Energy = {}".format(energy))
-    #         except ValueError:
-    #             print("Shell {} failed due to mismatched data shape.".format(n))
-        
-    #     np.savetxt("shell{}_properties_mid_1213co5sig_NtoS_NewShell39.txt".format(n), properties_mid)
-
-
-
-    #     ### Loop over v0 values with the maximum r, dr, vexp.
-    #     properties_hi = np.empty((N, 4))
-    #     r = (r_best + r_sig) * u.pc
-    #     dr = (dr_best + dr_sig) * u.pc
-    #     vexp = (vexp_best + vexp_sig) * u.km/u.s
-    #     for i,v0 in enumerate(v0_sample):
-
-    #         v0 = v0 * u.km/u.s   
-    #         print(shell.ra, shell.dec, r, dr, vexp, v0) 
-    #         try:
-    #             mass, momentum, energy = calc_physics(
-    #             ra=shell.ra, dec=shell.dec, r=r, dr=dr, vexp=vexp, v0=v0, dist=dist,
-    #             cube_12co=cube_12co, cube_13co=cube_13co, shell_snr_cutoff=5.)
-    #             properties_hi[i] = [v0.value, mass.value, momentum.value, energy.value]
-
-    #             print("Shell Physical Properties:")
-    #             print("------------------------------")
-    #             print("Mass = {}".format(mass))
-    #             print("Expansion Velocity = {}".format(vexp))
-    #             print("Momentum = {}".format(momentum))
-    #             print("Energy = {}".format(energy))
-    #         except ValueError:
-    #             print("Shell {} failed due to mismatched data shape.".format(n))
-        
-
-
-    #     np.savetxt("shell{}_properties_hi_1213co5sig_NtoS_NewShell39.txt".format(n), properties_hi)
-
-
-
-
-def subcube_region(cube=None, region_file='../subregions/subregions.reg', region_index=2,
-    region_unit = u.degree):
-    import pyregion
-    shape = pyregion.open(region_file)[region_index]
-    coords = shape.coord_list * region_unit
-    ra, dec, width, height = coords[0], coords[1], coords[2], coords[3]
-    return cube.subcube(ra + width/2., ra - width/2., dec - height/2., dec + height/2.)
-
-
-def hist_physics(table_list=None, table_list_shaded=None, mode='median', column=1, plotname="hist_mass_low_all.png",
-    return_total=True, bins='auto', xlim=None):
-    """
-    table_list_shaded gives shell property tables that I want to shade in the histogram.
-    """
-    #print(table_list)
-    x = []
-    x_shaded = []
-    for t in table_list:
-        if table_list_shaded and t in table_list_shaded:
-            x_shaded_sample = np.loadtxt(t)[:,column]
-            if mode == 'median':
-                x_shaded = np.append(x_shaded, np.median(x_shaded_sample))
-        x_sample = np.loadtxt(t)[:,column]
-        if mode == 'median':
-            x = np.append(x, np.median(x_sample))
-
-    plt.figure()
-    n, b, patches = plt.hist(
-        [x, x_shaded], histtype='step',
-        bins=bins,# stacked=True,
-        label=["All shells", "Best 12 shells"],
-        facecolor='black', edgecolor='black')
-    hatches = ['', '']
-    fills = [False,True]
-    for patch_set, hatch, fill in zip(patches, hatches, fills):
-        plt.setp(patch_set, hatch=hatch)
-        plt.setp(patch_set, fill=fill)
-
-    if column == 1:
-        plt.xlabel(r"Mass [$M_\odot$]")
-    if column == 2:
-        plt.xlabel(r"Momentum [$M_\odot$ km/s]")
-    if column == 3:
-        plt.xlabel(r"Kinetic Energy [erg]")
-    if xlim:
-        plt.xlim(xlim)
-
-    plt.ylabel("count")
-    plt.legend()
-
-    plt.savefig(plotname)
-
-    if return_total:
-        return np.sum(x)
-
-def table_shell_physics(param_file="shell_parameters_full_NtoS.txt", low_name="_properties_low_1213co5sig", mid_name="_properties_mid_1213co5sig",
-    hi_name="_properties_hi_1213co5sig", name_tail=".txt", all_n=np.arange(1,43), best_n=best_shells, np_func=np.median,
-    table_name="shell_physics_all_5sig.txt", usecols=[0,1,2,3], colnames=["v_exp", "mass", "momentum", "energy"],
-    scale_energy=1., scale_mdot=1., scale_Edot=1., scale_L=1., scale_momentum=1., scale_dpdt=1.):
-    
-    #from astropy.table import Table
-    
-    shell_list = shells.get_shells()
-    with open(table_name, 'w') as f:
-
-        print("Shell&"
-              "Mass&"
-              "Momentum&"
-              "Energy&"
-              "Mechanical Luminosity&"
-              "Momentum Injection Rate&"
-              "Wind Mass Loss Rate&"
-              "Wind Energy Injection Rate\\\\", file=f)
-
-        print("Name&"
-              "[M$_\\odot$]&"
-              "[M$_\\odot$ km s$^{{-1}}$]&"
-              "[$10^{{{}}}$ erg]&"
-              "[$10^{{{}}}$ erg s$^{{-1}}$]&"
-              "[$10^{{{}}}$ M$_\\odot$ km s$^{{-1}}$ yr$^{{-1}}$]&"
-              "[$10^{{{}}}$ M$_\\odot$ yr$^{{-1}}$]&"
-              "[$10^{{{}}}$ erg s$^{{-1}}$]\\\\".format(
-                int(np.log10(scale_energy)),
-                int(np.log10(scale_L)),
-                int(np.log10(scale_dpdt)),
-                int(np.log10(scale_mdot)),
-                int(np.log10(scale_Edot))
-                ), file=f)
-        n_dpdt = np.zeros(3)
-        c_dpdt = np.zeros(3)
-        s_dpdt = np.zeros(3)
-        l_dpdt = np.zeros(3)
-        for n in all_n:
-            params = np.loadtxt(param_file)
-            params = params[params[:,0] == 1.*n, 1:][0]
-            r_best, r_sig = params[0], params[1]
-            dr_best, dr_sig = params[2], params[3]
-            vexp_best, vexp_sig = params[4], params[5]
-            v0_best, v0_sig = params[6], params[7]
-
-            t_dyn = (r_best*u.pc / (vexp_best*u.km/u.s)).to(u.s).value
-            t_dyn_yr = t_dyn / 3.154e7
-
-            low = np_func(np.loadtxt("shell{}{}{}".format(n, low_name, name_tail), usecols=usecols), axis=0)
-            mid = np_func(np.loadtxt("shell{}{}{}".format(n, mid_name, name_tail), usecols=usecols), axis=0)
-            hi = np_func(np.loadtxt("shell{}{}{}".format(n, hi_name, name_tail), usecols=usecols), axis=0)
-            #wind velocity of 200 km/s and wind timescale of 1e6 yrs, and sigma_3D of 1.7 km/s
-
-            mass_three = np.array([low[1], mid[1], hi[1]])
-            momentum_three = np.array([low[2], mid[2], hi[2]])
-            energy_three = np.array([low[3], mid[3], hi[3]]) / scale_energy
-            L_three = np.array([low[3], mid[3], hi[3]]) / t_dyn / scale_L
-            dpdt_three = momentum_three / t_dyn_yr / scale_dpdt
-            mdot_three = mass_loss_rate(momentum_three*u.Msun*u.km/u.s).value / scale_mdot
-            Edot_three = wind_energy_rate(momentum_three*u.Msun*u.km/u.s).value / scale_Edot
-
-            mid_mass, hi_mass, low_mass = np.median(mass_three), np.max(mass_three), np.min(mass_three)
-            mid_momentum, hi_momentum, low_momentum = np.median(momentum_three)/scale_momentum, np.max(momentum_three)/scale_momentum, np.min(momentum_three)/scale_momentum
-            mid_energy, hi_energy, low_energy = np.median(energy_three), np.max(energy_three), np.min(energy_three)
-            mid_L, hi_L, low_L = np.median(L_three), np.max(L_three), np.min(L_three)
-            mid_dpdt, hi_dpdt, low_dpdt = np.median(dpdt_three), np.max(dpdt_three), np.min(dpdt_three)
-            mid_mdot, hi_mdot, low_mdot = np.median(mdot_three), np.max(mdot_three), np.min(mdot_three)
-            mid_Edot, hi_Edot, low_Edot = np.median(Edot_three), np.max(Edot_three), np.min(Edot_three)
-
-            if n in north_shells: 
-                n_dpdt += np.array([low_dpdt, mid_dpdt, hi_dpdt])
-            elif n in central_shells:
-                c_dpdt += np.array([low_dpdt, mid_dpdt, hi_dpdt])
-            elif n in south_shells:
-                s_dpdt += np.array([low_dpdt, mid_dpdt, hi_dpdt])
-            elif n in l1641_shells:
-                l_dpdt += np.array([low_dpdt, mid_dpdt, hi_dpdt])
-
-            def nice_round(x, max_decimal=1):
-                if x < 1:
-                    x = round(x, max_decimal)
-                else:
-                    x = round(x)
-                return x
-
-
-            print("${:.4g}$&${:.4g}~[{:.4g}, {:.4g}]$"
-                  "&${:.4g}~[{:.4g}, {:.4g}]$"
-                  "&${:.4g}~[{:.4g}, {:.4g}]$"
-                  "&${:.4g}~[{:.4g}, {:.4g}]$"
-                  "&${:.4g}~[{:.4g}, {:.4g}]$"
-                  "&${:.4g}~[{:.4g}, {:.4g}]$"
-                  "&${:.4g}~[{:.4g}, {:.4g}]$\\\\".format(
-                n, nice_round(mid_mass), nice_round(low_mass), nice_round(hi_mass),
-                   nice_round(mid_momentum), nice_round(low_momentum), nice_round(hi_momentum),
-                   nice_round(mid_energy), nice_round(low_energy), nice_round(hi_energy),
-                   nice_round(mid_L), nice_round(low_L), nice_round(hi_L),
-                   nice_round(mid_dpdt), nice_round(low_dpdt), nice_round(hi_dpdt),
-                   nice_round(mid_mdot), nice_round(low_mdot), nice_round(hi_mdot),
-                   nice_round(mid_Edot), nice_round(low_Edot), nice_round(hi_Edot)),
-                  file=f)
-
-        print("dpdt North: ", n_dpdt)
-        print("dpdt Central: ", c_dpdt)
-        print("dpdt South: ", s_dpdt)
-        print("dpdt L1641: ", l_dpdt)
-        print("dpdt TOT: ", n_dpdt + c_dpdt + s_dpdt + l_dpdt)
-
-def table_subregions(cube_12co="../nro_maps/12CO_20170514_FOREST-BEARS_spheroidal_grid7.5_dV0.099kms_xyb_YS_regrid0.11kms_reproj.fits",
-    cube_13co="../nro_maps/13CO_BEARS-FOREST_20170913_7.5grid_Spheroidal_Tmb_0.11kms_xy_YS.fits",
-    region_file="subregions.reg", outflow_file="outflows.txt", all_n=np.arange(1,43), best_n=best_shells,
-    table_name="../paper/tables/subregions.tex", usecols=[0,1,2,3,4,5,6,7,8],
-    shell_snr_cutoff=5., scale_energy=1e46):
-    
-    #from astropy.table import Table
-    
-    # cube_12co = SpectralCube.read(nro_12co)
-    # cube_13co = SpectralCube.read(nro_13co)
-    # north_12co = subcube_region(cube_12co, region_index=2)
-    # north_13co = subcube_region(cube_13co, region_index=2)
-    # north_mass, north_momentum, north_energy = calc_physics(
-    #     cube_12co=north_12co, cube_13co=north_13co, shell=False
-    #     ,shell_snr_cutoff=5., average_Tex=False
-    #     )
-    cube_12co = SpectralCube.read(nro_12co)
-    cube_13co = SpectralCube.read(nro_13co)
-    ### ENERGIES
-    north_low, north_mid, north_hi = plot_physicsrange(column=3, plotname=None, best_n=north_shells)
-    best_north_low, best_north_mid, best_north_hi = plot_physicsrange(column=3, plotname=None, best_n=set(north_shells).intersection(best_shells))
-    # # plot_physicsrange(column=1, plotname=None, best_n=central_shells)
-    # # plot_physicsrange(column=2, plotname=None, best_n=central_shells)
-    central_low, central_mid, central_hi = plot_physicsrange(column=3, plotname=None, best_n=central_shells)
-    best_central_low, best_central_mid, best_central_hi = plot_physicsrange(column=3, plotname=None, best_n=set(central_shells).intersection(best_shells))
-    # # plot_physicsrange(column=1, plotname=None, best_n=south_shells)
-    # # plot_physicsrange(column=2, plotname=None, best_n=south_shells)
-    south_low, south_mid, south_hi = plot_physicsrange(column=3, plotname=None, best_n=south_shells)
-    best_south_low, best_south_mid, best_south_hi = plot_physicsrange(column=3, plotname=None, best_n=set(south_shells).intersection(best_shells))
-    # # plot_physicsrange(column=1, plotname=None, best_n=south_shells)
-    # # plot_physicsrange(column=1, plotname=None, best_n=l1641_shells)
-    l1641n_low, l1641n_mid, l1641n_hi = plot_physicsrange(column=3, plotname=None, best_n=l1641_shells)
-    best_l1641n_low, best_l1641n_mid, best_l1641n_hi = plot_physicsrange(column=3, plotname=None, best_n=set(l1641_shells).intersection(best_shells))
-
-    lows = [north_low, central_low, south_low, l1641n_low]
-    mids = [north_mid, central_mid, south_mid, l1641n_mid]
-    his = [north_hi, central_hi, south_hi, l1641n_hi]
-
-    print("Lows: ", lows)
-    print("Mids: ", mids)
-    print("His: ", his)
-
-    # north_12co = subcube_region(cube_12co, region_index=2)
-    # north_13co = subcube_region(cube_13co, region_index=2)
-    # north_mass, north_momentum, north_energy = calc_physics(
-    #     cube_12co=north_12co, cube_13co=north_13co, shell=False
-    #     ,shell_snr_cutoff=shell_snr_cutoff, average_Tex=False
-    #     )
-
-
-    # central_12co = subcube_region(cube_12co, region_index=9)
-    # central_13co = subcube_region(cube_13co, region_index=9)
-    # central_mass, central_momentum, central_energy = calc_physics(
-    #     cube_12co=central_12co, cube_13co=central_13co, shell=False
-    #     ,shell_snr_cutoff=shell_snr_cutoff, average_Tex=False
-    #     )
-
-    # south_12co = subcube_region(cube_12co, region_index=7)
-    # south_13co = subcube_region(cube_13co, region_index=7)
-    # south_mass, south_momentum, south_energy = calc_physics(
-    #     cube_12co=south_12co, cube_13co=south_13co, shell=False
-    #     ,shell_snr_cutoff=shell_snr_cutoff, average_Tex=False
-    #     )
-
-    # l1641n_12co = subcube_region(cube_12co, region_index=8)
-    # l1641n_13co = subcube_region(cube_13co, region_index=8)
-    # l1641n_mass, l1641n_momentum, l1641n_energy = calc_physics(
-    #     cube_12co=l1641n_12co, cube_13co=l1641n_13co, shell=False
-    #     ,shell_snr_cutoff=shell_snr_cutoff, average_Tex=False
-    #     )
-    north_energy, central_energy, south_energy, l1641n_energy = [
-    7.8e46, 2e47, 1.4e47, 1.6e47]
-    north_m, central_m, south_m, l1641n_m = np.array([4048, 3736, 5001, 5196])*u.Msun
-    north_r, central_r, south_r, l1641n_r = np.array([2, 1, 2.5, 2])*u.pc
-    north_sigma, central_sigma, south_sigma, l1641n_sigma = np.array([1.6, 1.7, 1.6, 1.6])*u.km/u.s
-    north_dpdt, central_dpdt, south_dpdt, l1641n_dpdt = dpdt(north_m, north_r, north_sigma), dpdt(central_m, central_r, central_sigma), dpdt(south_m, south_r, south_sigma), dpdt(l1641n_m, l1641n_r, l1641n_sigma)
-
-    turbs = [north_energy, central_energy, south_energy, l1641n_energy]
-    turb_dpdt = [north_dpdt, central_dpdt, south_dpdt, l1641n_dpdt]
-    print(turbs, turb_dpdt)
-    outflow_table = ascii.read(outflow_file)
-    print(outflow_table['energy'])
-
-    with open(table_name, 'w') as f:
-
-        print("\\begin{table*}\n"
-        "\\centering"
-        "\\caption{\\label{tab:impact} Impact by Cloud Region}"
-        "\\begin{tabular}{cccc}"
-        "\\hline"
-        "\\hline", file=f)
-
-        print("Subregion&"
-              "$E_{{\\rm shells}}$ [$10^{{{}}}$ erg]&"
-              "$E_{{\\rm outflows}}$ [$10^{{{}}}$ erg]&"
-              "$E_{{\\rm turb}}$ [$10^{{{}}}$ erg]&".format(
-                int(np.log10(scale_energy)), int(np.log10(scale_energy)), int(np.log10(scale_energy))),
-                file=f)
-
-        
-
-        for i in range(len(lows)):
-
-            subregion = outflow_table['subregion'][i]
-            outflow = outflow_table['energy'][i]
-            shell_low = lows[i]
-            shell_mid = mids[i]
-            shell_hi = his[i]
-            turb = turbs[i]
-            print("{}"
-                  "&${:.2g}_{{-{:.2g}}}^{{+{:.2g}}}$"
-                  "&${:.2g}$"
-                  "&${:.2g}$\\\\".format(
-                subregion, shell_mid/scale_energy, (shell_mid-shell_low)/scale_energy, (shell_hi-shell_mid)/scale_energy,
-                outflow/scale_energy, turb/scale_energy),
-                file=f)
-
-        print("{}"
-                  "&${:.2g}_{{-{:.2g}}}^{{+{:.2g}}}$"
-                  "&${:.2g}$"
-                  "&${:.2g}$\\\\".format(
-                "Total", np.sum(mids)/scale_energy, (np.sum(mids) - np.sum(lows))/scale_energy,
-                (np.sum(his)-np.sum(mids))/scale_energy,
-                np.sum(outflow_table['energy'])/scale_energy, np.sum(turbs)/scale_energy),
-                file=f)        
-
-        print("\\\n"
-        "\\hline"
-        "\\end{tabular}"
-        "\\end{table*}", file=f)
-
-def table_shell_parameters(param_file="shell_parameters_full_NtoS.txt", all_n=np.arange(1,43), best_n=best_shells,
-    table_name="shell_parameters_NtoS_tex.txt", usecols=[0,1,2,3,4,5,6,7,8], show_texp=False):
-    from astropy.coordinates import SkyCoord
-    #from astropy.table import Table
-    kmspc_toMyr = 0.9778
-    
-    with open(table_name, 'w') as f:
-        if show_texp:
-            print("Shell&"
-                  "$\\alpha (J2000)/\\delta (J2000)$&"
-                  "$R$ [pc]&"
-                  "$dr$ [pc]&"
-                  "$v_{\\rm exp}$ km s$^{-1}$&"
-                  "$v_{\\rm 0}$ km s$^{-1}$&"
-                  "$t_{\\tm exp}$ Myr&", file=f)
-            
-        else:
-            print("Shell&"
-                  "$R$ [pc]&"
-                  "$dr$ [pc]&"
-                  "$v_{\\rm exp}$ km s$^{-1}$&"
-                  "$v_{\\rm 0}$ km s$^{-1}$&", file=f)
-
-        data = np.loadtxt(param_file)
-        shell_list = shells.get_shells(velocity_file="../shell_candidates/AllShells_vrange_NtoS.txt",
-            region_file="../shell_candidates/AllShells_NtoS.reg")
-        for n in all_n:
-            i = n-1
-            line = data[i]
-
-            shell = shell_list[i]
-            hms = SkyCoord(shell.ra, shell.dec).ra.hms
-            dms = SkyCoord(shell.ra, shell.dec).dec.dms
-            ra_str = "${}^{{\\rm h}}{}^{{\\rm m}}{}^{{\\rm s}}.{}$".format(
-                int(hms.h), int(hms.m), int(round(hms.s,1)), str(round(hms.s,1))[-1])
-            dec_str = "${}\\arcdeg{}\\arcmin{}\\arcsec$".format(
-                int(dms.d), int(dms.m), int(round(dms.s)))
-
-            if show_texp:
-                texp = (line[1]/line[5]) * kmspc_toMyr #Myr
-                e_texp = texp * np.sqrt((line[2]/line[1])**2. + (line[6]/line[5])**2.)
-                print("${}$&{}/{}&${:.3f}\pm{:.3f}$&${:.3f}\pm{:.3f}$&${:.2f}\pm{:.2f}$&${:.2f}\pm{:.2f}$&${:.2f}\pm{:.2f}$\\\\".format(
-                    int(line[0]), ra_str, dec_str, line[1], line[2], line[3], line[4], line[5],
-                    line[6], line[7], line[8], texp, e_texp),
-                    file=f)
-            else:
-                print("${}$&${:.3f}\pm{:.3f}$&${:.3f}\pm{:.3f}$&${:.2f}\pm{:.2f}$&${:.2f}\pm{:.2f}$\\\\".format(
-                    int(line[0]), line[1], line[2], line[3], line[4], line[5],
-                    line[6], line[7], line[8]),
-                    file=f)
-
-
-
-
-def plot_physicsrange(low_name="_properties_low_1213co5sig_NtoSorder",
- mid_name="_properties_mid_1213co5sig_NtoSorder", hi_name="_properties_hi_1213co5sig_NtoSorder", name_tail=".txt",
-    all_n=np.arange(1,43), best_n=best_shells, mode='median',
-    column=1, plotname='massrange_all.png', lw=0.7, ms=4., mew=0.7, scale=1.):
-    import matplotlib.lines as mlines
-    plt.figure()
-
-    total_low = 0
-    total_mid = 0
-    total_hi = 0
-    L_mid = 0
-    L_hi = 0
-    L_low = 0
-    for n in all_n:
-        params = np.loadtxt("shell_parameters_full.txt")
-        params = params[params[:,0] == 1.*n, 1:][0]
-        r_best, r_sig = params[0], params[1]
-        dr_best, dr_sig = params[2], params[3]
-        vexp_best, vexp_sig = params[4], params[5]
-        v0_best, v0_sig = params[6], params[7]
-        tdyn = (r_best*u.pc / (vexp_best*(u.km/u.s))).to(u.s).value
-
-        print(n, "shell{}{}{}".format(n, low_name, name_tail))
-        low = np.loadtxt("shell{}{}{}".format(n, low_name, name_tail))[:,column]
-        mid = np.loadtxt("shell{}{}{}".format(n, mid_name, name_tail))[:,column]
-        hi = np.loadtxt("shell{}{}{}".format(n, hi_name, name_tail))[:,column]
-        if mode == 'median':
-            low = np.median(low)
-            mid = np.median(mid)
-            hi = np.median(hi)
-        
-        if n in best_n:
-            #print(low,mid,hi)
-            L_low += np.min([low,mid,hi]) / tdyn
-            L_mid += np.median([low,mid,hi]) / tdyn
-            L_hi += np.max([low,mid,hi]) / tdyn
-            total_low += np.min([low,mid,hi])
-            total_mid += np.median([low,mid,hi])
-            total_hi += np.max([low,mid,hi])
-
-
-            plt.plot([np.min([low,mid,hi])/scale, np.max([low,mid,hi])/scale], [n,n],
-                color='k', ls='-', lw=lw)
-            plt.plot(np.median([low,mid,hi])/scale, n, marker='o', color='k', ms=ms)
-            
-
-        else:
-            plt.plot([np.min([low,mid,hi])/scale, np.max([low,mid,hi])/scale], [n,n],
-                color='k', ls=':', lw=lw)
-            plt.plot(np.median([low,mid,hi])/scale, n, marker='o', markerfacecolor='white', color='k',
-                ms=ms, mew=mew)
-            
-
-    if column == 1:
-        plt.xlim([-10.,505.])
-        plt.xlabel(r"Mass [$M_\odot$]")
-    if column == 2:
-        plt.xlim([-50., 2700])
-        plt.xlabel(r"Momentum [$M_\odot$ km/s]")
-    if column == 3:
-        plt.xlim([-0.2, 16.])
-        plt.xlabel(r"Kinetic Energy [$10^{46}$ erg]")
-
-    plt.ylabel("Shell Number")
-    best_line = mlines.Line2D([], [],
-     color='k', marker='o', linestyle='solid', label='Best 12 shells',
-      lw=lw, ms=ms, mew=mew)
-    other_line = mlines.Line2D([], [],
-     color='k',marker='o', markerfacecolor='white', linestyle='dotted', label='Other shells',
-      lw=lw, ms=ms, mew=mew)
-    plt.legend(handles=[best_line, other_line], loc='best')
-    try:
-        plt.savefig(plotname, dpi=200)
-    except TypeError:
-        pass
-    #   plt.show()
-    print("Mechanical Luminosity of Shells [erg/s]: ", L_low, L_mid, L_hi)
-    return total_low, total_mid, total_hi
 
 def calc_physics(ra=None, dec=None, r=0.17*u.pc, dr=0.05*u.pc,
  vexp=4*u.km/u.s, v0=14*u.km/u.s, cube_12co=None, cube_13co=None,
@@ -1041,73 +311,36 @@ def cube_Tex(cube, thick=True, snr_cutoff=0,
     #print(Tpeak)
     return Tex(Tpeak, thick=thick)
 
+def rms_mom0(cube, channel_rms=0.86*u.K):
+        channel_width = cube.spectral_axis[1] - cube.spectral_axis[0]
+        rms_mom0 =  channel_width * np.sqrt(cube.spectral_axis.size * channel_rms ** 2.)
+        return rms_mom0 
 
-def extract_shell(cube_file=nro_12co, model_pars=None,
- mask_minimum=0.00001, return_mask=False, model_cube=None,
- keep_latlon=False, snr_cutoff=None, rms=0.):
+def rms(cube=None, velocity_range=[[-3.,-0.1], [19.,20.]]*u.km/u.s,
+    return_map=False):
     """
-    Return a masked cube from an observed spectral cube file,
-    where the mask is True wherever a model shell cube
-    with parameters given by `model_pars` dictionary is > mask_minimum.
-
-    """
-    if not model_cube:
-        model_cube = SpectralCube.read(shell_model.ppv_model(**model_pars))
-    if type(cube_file) == str:
-        if keep_latlon:
-            obs_cube = SpectralCube.read(cube_file).spectral_slab(
-                model_cube.spectral_extrema[0],
-                model_cube.spectral_extrema[1])
-        else:
-            obs_cube = SpectralCube.read(cube_file).subcube(
-                                model_cube.longitude_extrema[1],
-                                model_cube.longitude_extrema[0],
-                                model_cube.latitude_extrema[0],
-                                model_cube.latitude_extrema[1],
-                                model_cube.spectral_extrema[0],
-                                model_cube.spectral_extrema[1])
-    else:
-        if keep_latlon:
-            obs_cube = cube_file.spectral_slab(
-                model_cube.spectral_extrema[0],
-                model_cube.spectral_extrema[1])
-        else:
-            obs_cube = cube_file.subcube(
-                                model_cube.longitude_extrema[1],
-                                model_cube.longitude_extrema[0],
-                                model_cube.latitude_extrema[0],
-                                model_cube.latitude_extrema[1],
-                                model_cube.spectral_extrema[0],
-                                model_cube.spectral_extrema[1])
-    print("Before changing wcs, obs_cube shape: ", obs_cube.shape)
-    #Reset the cube wcs to the values corresponding to the subcube.
-    obs_cube = SpectralCube(obs_cube.hdu.data, wcs=model_cube.wcs) * u.K
-    shell_mask = model_cube > mask_minimum*u.dimensionless_unscaled
-    print(model_cube.shape, obs_cube.shape)
-    obs_cube_masked = obs_cube.with_mask(shell_mask)
-    if snr_cutoff:
-        obs_cube_masked = obs_cube_masked.with_mask(obs_cube > snr_cutoff * rms)
-    #obs_array_masked = obs_cube_masked.filled_data[:,:,:]
-    if return_mask:
-        return obs_cube_masked, shell_mask
-    else:
-        return obs_cube_masked
-
-def rms_map(cube=None, velocity_range=[[-3.,-0.1], [19.,20.]]*u.km/u.s):
-    """
-    Returns 2D array of the standard deviation of a spectral cube,
+    Returns 2D array (or one value) of the standard deviation of a spectral cube,
     calculated only in the emission-free channels.
     """
+    if velocity_range.ndim == 1:
+        channel_range = [cube.closest_spectral_channel(v) for v in velocity_range]
+        emissionless_channels = np.arange(channel_range[0], channel_range[1]+1)
+    else:
+        channel_range = [[cube.closest_spectral_channel(vpair[0]),
+                      cube.closest_spectral_channel(vpair[1])]
+                     for vpair in velocity_range]
+        emissionless_channels = np.concatenate(
+            [np.arange(c[0], c[1]+1) for c in channel_range])
 
-    channel_range = [[cube.closest_spectral_channel(vpair[0]),
-                  cube.closest_spectral_channel(vpair[1])]
-                 for vpair in velocity_range]
-
-    emissionless_channels = np.concatenate(
-        [np.arange(c[0], c[1]+1) for c in channel_range])
     emissionless_cube = cube.unmasked_data[emissionless_channels,:,:]
-    rms_map = np.nanstd(emissionless_cube, axis=0)
-    return rms_map
+
+
+    if return_map:
+        rms_map = np.nanstd(emissionless_cube, axis=0)
+        return rms_map
+    else:
+        rms = np.nanstd(emissionless_cube)
+        return rms
 
 def regrid(cube=None, new_axis=None, smooth=True):
     """
@@ -1130,31 +363,10 @@ def regrid(cube=None, new_axis=None, smooth=True):
         suppress_smooth_warning=smooth)
     return cube
 
-def mask_snr(cube=None, rms_map=None, snr=5., return_mask=False):
-    """
-    Returns the spectral cube with low significance voxels
-    masked out, using a map of rms calculated in emission-free
-    channels.
-    """
-    if return_mask:
-        return (cube > snr * rms_map)
-    else:
-        return cube.with_mask(cube > snr * rms_map)
-
-def cube_ratio(cubes=[None, None], rms_maps=[None, None], return_uncertainty=True):
-    """
-    Returns spectral cube with ratio (uncertainties on the ratio) between
-    two cubes. Uncertainity calculated with error propagation assuming
-    the error on each cube is given by the rms in emission-free channels.
-    """
-    cube_ratio = cubes[0] / cubes[1]
-    if return_uncertainty:
-        cube_ratio_uncertainty = cube_ratio * np.sqrt(
-            (rms_maps[0] / cubes[0]) ** 2. +
-            (rms_maps[1] / cubes[1]) ** 2.)
-        return cube_ratio, cube_ratio_uncertainty
-    else:
-        return cube_ratio
+def sigma_mom0(cube, channel_sigma=sig12):
+    channel_width = cube.spectral_axis[1] - cube.spectral_axis[0]
+    sigma_mom0 =  channel_width * np.sqrt(cube.spectral_axis.size * channel_sigma ** 2.)
+    return sigma_mom0 
 
 def average_spectrum(cube=None, weights=1., axis=(1,2), return_std=True,
     ignore_nan=True):
@@ -1181,6 +393,44 @@ def average_spectrum(cube=None, weights=1., axis=(1,2), return_std=True,
         return average_spectrum, std_spectrum
     else:
         return average_spectrum
+
+# def mask_snr(return_mask=, channel_sigma=sig12):
+
+def opacity_correct_mom0(cube_thick, cube_thin, abundance_ratio=62., return_opacity=False,
+    np_func=np.nanmean):
+    """
+    Correct an optically thick emission-line cube for optical depth using
+    an optically thin emission-line cube. This method used the ratios of the mean
+    integrated intensity of the two cubes to calculate the opacity correction. To 
+    find a velocity-dependent opacity correction, use opacity_correct_vel. 
+
+    Returns the opacity correction factor to multiply cube_thick.
+
+    cube_thick: SpectralCube or Projection
+        if Projection, then treat as moment0 map
+    cube_thin: SpectralCube or Projection
+        if Projection, then treat as moment0 map
+    """
+    from stamp import read_cube
+    try:
+        mom0_thick = read_cube(cube_thick).moment0()
+    except:
+        mom0_thick = cube_thick
+    try:
+        mom0_thin = read_cube(cube_thin).moment0()
+    except:
+        mom0_thin = cube_thin
+    correct_factor = 1./(
+        (np_func(mom0_thick.data) / np_func(mom0_thin.data)) / abundance_ratio)
+    if return_opacity:
+        from scipy.optimize import minimize
+        costfunc = lambda tau: np.abs(correct_factor - (tau / (1-np.exp(-tau))))
+        opacity = minimize(costfunc, correct_factor).x[0]
+        return (correct_factor, opacity)
+    else:
+        return correct_factor
+
+
 
 def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62.,
     snr_cutoff=5., empty_velocity_range=[[-3.,-0.1], [19.,20.]]*u.km/u.s,
@@ -1297,13 +547,13 @@ def column_density_H2(cube, Tex,
     factor = factor * Qrot_partial(Tex, B0_k, N=Qrot_order)\
      * np.exp(E_u_k/Tex) / beam_filling_factor / X_factor
 
-
+    # print(factor)
     if moment0:
-        return (factor * cube.moment0()).to(1/(u.cm**2.))
+        return (cube.moment0() * factor).to(u.cm**-2)
     else:
-        return (factor * cube).decompose()
+        return (cube * factor).to(u.cm**-2 / (u.m/u.s))
 
-def Qrot_partial(Tex, B0_k=2.765*u.K, N=20):
+def Qrot_partial(Tex, B0_k=2.765*u.K, N=100):
     """
     Calculate Partial sum of partition function
     at a given excitation temperature. 

@@ -18,6 +18,7 @@ from astropy.wcs import WCS
 from astropy.table import Table
 import matplotlib
 from matplotlib.patches import Circle,FancyArrow
+import matplotlib.colors as colors
 import math
 import matplotlib.animation as animation
 
@@ -35,11 +36,48 @@ def main():
     cube13 = SpectralCube.read("../cubes/mask_imfit_13co_pix_2_Tmb.fits")
     cube12 = SpectralCube.read("../cubes/mask_imfit_12co_pix_2_Tmb.fits")
 
+    outflow = tanabe_t[tanabe_t["Number"] == 39][0]
+    # print(outflow)
+    coord = SkyCoord(outflow["RA_J2000"], outflow["DEC_J2000"], unit=u.deg)
+    # print(coord)
+    do_fit = 0
+    nsigma_vel = 2.5
+    blue_vel = 4.7*u.km/u.s
+    red_vel = 10.*u.km/u.s
+    fit_radius = 15*u.arcsec
+    width = height = 4*u.arcmin
+    start = 10.
+    stop = 50.
+    step = 5.
+    fig = plt.figure(figsize=(10,5))
+    plot_finder(cube12, coord=SkyCoord(outflow['RA_J2000'], outflow['DEC_J2000'], unit=u.deg),
+                fit_cube=cube12, fit_radius=fit_radius,
+                nsigma_vel=nsigma_vel, blue_vel=blue_vel, red_vel=red_vel,
+                fit_spectrum=do_fit,
+                figname="physics_test/finder_tanabe_{}_12co_{:g}_{:g}_{:g}sig.pdf".format(
+                    outflow["Number"], start, stop, step),
+                region_width=width, region_height=height,
+                blue_levels=np.arange(start, stop+step, step), red_levels=np.arange(start, stop+step, step),
+                show_stamp=True, show_catalogs=True, show_spectrum=True, show_fit=do_fit,
+                show_fitcircle=False, show_vrange=True, interactive=False, show_name=False,
+                show_contour=1, show_redblue=True, show_outflows=False, redblue_mode='rgb',
+                imshow_kwargs={"cmap":"RdBu_r", "interpolation":"none"},
+                blue_contour_kwargs={'colors':'blue', 'linewidths':1, 'alpha':0.6, 'zorder':3},
+                red_contour_kwargs={'colors':'red', 'linewidths':1, 'alpha':0.6, 'zorder':3},
+                fig=fig
+                )
+    plt.show()
+
+
+
+### Plot stamps around Tanabe outflows.
     # for outflow in tanabe_t:
+
     #     if not outflow['new']:
     #         do_fit = 1
     #         nsigma_vel = 2.5
     #         fit_radius = 15*u.arcsec
+    #         width = height = 5*u.arcmin
     #         plot_finder(cube12, coord=SkyCoord(outflow['RA_J2000'], outflow['DEC_J2000'], unit=u.deg),
     #                     fit_cube=cube12, fit_radius=fit_radius,
     #                     nsigma_vel=nsigma_vel, blue_vel=9.*u.km/u.s, red_vel=13.7*u.km/u.s,
@@ -48,7 +86,7 @@ def main():
     #                         outflow["Number"], "{:g}".format(nsigma_vel).replace(".","p"), fit_radius.value),
     #                     region_width=10*u.arcmin, region_height=10*u.arcmin,
     #                     blue_levels=np.arange(5., 50, 5), red_levels=np.arange(5., 50, 5),
-    #                     show_contours=True, show_catalogs=True, show_spectrum=True, show_fit=do_fit,
+    #                     show_stamp=True, show_catalogs=True, show_spectrum=True, show_fit=do_fit,
     #                     show_fitcircle=False, show_vrange=True, interactive=True
     #                     )
     #         break
@@ -76,7 +114,7 @@ def main():
     #                     figname="finders/davis_nohops/finder_{}{}_{}.pdf".format("davis",davis_id,"fit12co_2sigma_fit15arcsec"),
     #                     region_width=width, region_height=height,
     #                     blue_levels=np.arange(5, 50, 5), red_levels=np.arange(5., 50, 5),
-    #                     show_contours=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
+    #                     show_stamp=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
     #                     show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
     #                     interactive=False
     #                     ) 
@@ -105,7 +143,7 @@ def main():
     #                     figname="finders/all_hops/finder_{}{}_{}.pdf".format("hops",hops_id,"fit12co_2sigma_fit15arcsec"),
     #                     region_width=width, region_height=height,
     #                     blue_levels=np.arange(5, 50, 5), red_levels=np.arange(5., 50, 5),
-    #                     show_contours=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
+    #                     show_stamp=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
     #                     show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
     #                     interactive=False
     #                     ) 
@@ -118,82 +156,82 @@ def main():
             
 ### Plot stamps around OMC-1 South
 
-    blue_step = red_step = 1
-    blue_left = np.arange(-2
-        , 4+blue_step, blue_step)
-    red_left = np.arange(11, 17+red_step, red_step)[::-1]
+#     blue_step = red_step = 1
+#     blue_left = np.arange(-2
+#         , 4+blue_step, blue_step)
+#     red_left = np.arange(11, 17+red_step, red_step)[::-1]
     
-    for i, (blue, red) in enumerate(zip(blue_left, red_left)): 
-        blue_vel = [blue,blue+2]*u.km/u.s
-        red_vel = [red,red+2]*u.km/u.s
-        dofit=0
-        width=height=5*u.arcmin
-        start = 10
-        stop = 100
-        step = 10
-        contour_levels = np.arange(start, stop, step)
-        show_name=0
-        if dofit:
-            figname = "finders/omc1/omc1s/omc1s_fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
-        elif len(blue_vel) == 1:
-            figname = "finders/omc1/omc1s/omc1s_blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
-                start, stop, step)
-        else:
-            figname = "finders/omc1/omc1s/{:04}_omc1s_blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(i, blue_vel[0].value, blue_vel[1].value,
-             red_vel[0].value, red_vel[1].value, width.value, start, stop, step)
-        # print(hops_id)
-        c = SkyCoord("5h35m14s", "-5d24m00s")
-        plot_finder(cube12, coord=c,
-                fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
-                nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
-                figname=figname,
-                region_width=width, region_height=height,
-                blue_levels=contour_levels, red_levels=contour_levels,
-                show_contours=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
-                show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
-                show_legend=True,
-                catalogs=["../catalogs/davis09_h2jets.fits",
-                          "../catalogs/omc1s_cores_palau18.vot"],
-                catalog_kwargs=[dict(marker="+", s=60, color='black', lw=1, zorder=3, label=r"H$_2$ Flows"),
-                                dict(marker=".", s=20, color='black', lw=1, zorder=3, label=r"1.3mm Cores")],
-                interactive=False
-                )
+#     for i, (blue, red) in enumerate(zip(blue_left, red_left)): 
+#         blue_vel = [blue,blue+2]*u.km/u.s
+#         red_vel = [red,red+2]*u.km/u.s
+#         dofit=0
+#         width=height=5*u.arcmin
+#         start = 10
+#         stop = 100
+#         step = 10
+#         contour_levels = np.arange(start, stop, step)
+#         show_name=0
+#         if dofit:
+#             figname = "finders/omc1/omc1s/omc1s_fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
+#         elif len(blue_vel) == 1:
+#             figname = "finders/omc1/omc1s/omc1s_blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
+#                 start, stop, step)
+#         else:
+#             figname = "finders/omc1/omc1s/{:04}_omc1s_blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(i, blue_vel[0].value, blue_vel[1].value,
+#              red_vel[0].value, red_vel[1].value, width.value, start, stop, step)
+#         # print(hops_id)
+#         c = SkyCoord("5h35m14s", "-5d24m00s")
+#         plot_finder(cube12, coord=c,
+#                 fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
+#                 nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
+#                 figname=figname,
+#                 region_width=width, region_height=height,
+#                 blue_levels=contour_levels, red_levels=contour_levels,
+#                 show_stamp=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
+#                 show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
+#                 show_legend=True,
+#                 catalogs=["../catalogs/davis09_h2jets.fits",
+#                           "../catalogs/omc1s_cores_palau18.vot"],
+#                 catalog_kwargs=[dict(marker="+", s=60, color='black', lw=1, zorder=3, label=r"H$_2$ Flows"),
+#                                 dict(marker=".", s=20, color='black', lw=1, zorder=3, label=r"1.3mm Cores")],
+#                 interactive=False
+#                 )
 
-### Plot stamps around Orion-KL
-    blue_step = red_step = 1
-    blue_left = np.arange(-2, 4+blue_step, blue_step)
-    red_left = np.arange(12, 18+red_step, red_step)[::-1]
+# ### Plot stamps around Orion-KL
+#     blue_step = red_step = 1
+#     blue_left = np.arange(-2, 4+blue_step, blue_step)
+#     red_left = np.arange(12, 18+red_step, red_step)[::-1]
 
-    for blue, red in zip(blue_left, red_left): 
-        blue_vel = [blue,blue+2]*u.km/u.s
-        red_vel = [red,red+2]*u.km/u.s
-        dofit=0
-        width=height=5*u.arcmin
-        start = 10
-        stop = 200
-        step = 20
-        contour_levels = np.arange(start, stop, step)
-        show_name=0
-        if dofit:
-            figname = "finders/omc1/orionkl/orionkl_fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
-        elif len(blue_vel) == 1:
-            figname = "finders/omc1/orionkl/orionkl_blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
-                start, stop, step)
-        else:
-            figname = "finders/omc1/orionkl/orionkl_blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel[0].value, blue_vel[1].value,
-             red_vel[0].value, red_vel[1].value, width.value, start, stop, step)
-        # print(hops_id)
-        c = SkyCoord("5h35m14s", "-5d22m30s")
-        plot_finder(cube12, coord=c,
-                fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
-                nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
-                figname=figname,
-                region_width=width, region_height=height,
-                blue_levels=contour_levels, red_levels=contour_levels,
-                show_contours=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
-                show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
-                interactive=False
-                ) 
+#     for blue, red in zip(blue_left, red_left): 
+#         blue_vel = [blue,blue+2]*u.km/u.s
+#         red_vel = [red,red+2]*u.km/u.s
+#         dofit=0
+#         width=height=5*u.arcmin
+#         start = 10
+#         stop = 200
+#         step = 20
+#         contour_levels = np.arange(start, stop, step)
+#         show_name=0
+#         if dofit:
+#             figname = "finders/omc1/orionkl/orionkl_fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
+#         elif len(blue_vel) == 1:
+#             figname = "finders/omc1/orionkl/orionkl_blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
+#                 start, stop, step)
+#         else:
+#             figname = "finders/omc1/orionkl/orionkl_blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel[0].value, blue_vel[1].value,
+#              red_vel[0].value, red_vel[1].value, width.value, start, stop, step)
+#         # print(hops_id)
+#         c = SkyCoord("5h35m14s", "-5d22m30s")
+#         plot_finder(cube12, coord=c,
+#                 fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
+#                 nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
+#                 figname=figname,
+#                 region_width=width, region_height=height,
+#                 blue_levels=contour_levels, red_levels=contour_levels,
+#                 show_stamp=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
+#                 show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
+#                 interactive=False
+#                 ) 
 
 # def plot_stamps():
 
@@ -232,18 +270,28 @@ def plot_finder(cube,
         blue_vel=8.2*u.km/u.s, red_vel=13.8*u.km/u.s,
         blue_levels=np.arange(5., 50, 5), red_levels=np.arange(5., 50, 5),
         channel_sigma=1.*u.K, auto_sigma=True, sigma_contours=True,
-        red_sigma=None, blue_sigma=None,
+        red_sigma=None, blue_sigma=None, 
         blue_contour_kwargs={"colors":'blue', "linewidths":1},
         red_contour_kwargs={'colors':'red', "linewidths":1},
         annotate=False,
+
+        #Arguments for showing red/blue moment0 maps.
+        redblue_mode="subtract", redblue_sigscale=True,
+        rscale=[0,1], bscale=[0,1],
+        imshow_kwargs={'cmap':"RdBu", 'interpolation':'gaussian'},
+
         # xlabel="RA [J2000]", ylabel="DEC [J2000]",
 
         #Arguments to choose what to show.
-        show_contours=True, show_catalogs=True, show_fitcircle=True, show_outflows=True,
+        show_stamp=True, show_catalogs=True, show_fitcircle=True, show_outflows=True,
         show_spectrum=True, show_fit=True, show_vrange=True, show_legend=False,
+        show_redblue=False, show_contour=True, 
+
+        #
 
         #Catalog arguments.
-        catalogs=["../catalogs/hops.fits", "../catalogs/davis09_h2jets.fits"],
+        catalogs=["/Users/jesse/repos/outflows/catalogs/hops.fits",
+         "/Users/jesse/repos/outflows/catalogs/davis09_h2jets.fits"],
         catalog_kwargs=[dict(marker="o", s=10, color='black', lw=1, zorder=3),
                         dict(marker="+", s=60, color='black', lw=1, zorder=3)],
 
@@ -264,6 +312,7 @@ def plot_finder(cube,
         #Figure arguments.
         # ncols=2, nrows=1,
         fig=None, figname="finder.pdf",
+        savefig=True, verbose=True,
         
         interactive=False):
     """
@@ -278,14 +327,14 @@ def plot_finder(cube,
     #make sure subplots go where they should
     nrows = 1
     
-    if (show_contours or show_catalogs) and show_spectrum:
+    if (show_stamp or show_catalogs) and show_spectrum:
         ncols = 2
-        i_cont = 1
+        i_stamp = 1
         i_cat = 1
         i_spec = 2
     else:
         ncols = 1
-        i_cont = 1
+        i_stamp = 1
         i_cat = 1
         i_spec = 1
 
@@ -297,8 +346,9 @@ def plot_finder(cube,
         subcube_fit = extract_subcube(fit_cube, CircleSkyRegion, 
             region_kwargs={'center':coord,
                            'radius':fit_radius})
-        print(coord, fit_radius)
-        print(subcube_fit)
+        if verbose:
+            print(coord, fit_radius)
+            print(subcube_fit)
         spec = extract_spectrum(subcube_fit, spectral_unit=spectral_unit, method=spec_method)
         gauss = fit_gaussian(spec.spectral_axis.value, spec.value, autoguess=autoguess,
             gaussian_kwargs=gaussian_kwargs, fit_kwargs=fit_kwargs)
@@ -308,34 +358,42 @@ def plot_finder(cube,
         blue_vel = (gauss.mean - gauss.stddev*nsigma_vel)*spec_unit
         red_vel = (gauss.mean + gauss.stddev*nsigma_vel)*spec_unit
 
-    if show_contours: 
-        ax_cont = fig.add_subplot(nrows, ncols, i_cont, projection=WCS(cube.header).celestial)
-        ax_cont.set_aspect('equal')
-        ax_cont, bluecont, redcont = plot_redblue(cube, ax=ax_cont, plot_file="plot_redblue.pdf",
+    if show_stamp: 
+        ax_stamp = fig.add_subplot(nrows, ncols, i_stamp, projection=WCS(cube.header).celestial)
+        ax_stamp.set_aspect('equal')
+
+        ax_stamp = plot_redblue(cube, ax=ax_stamp, plot_file="plot_redblue.pdf",
             blue_vel=blue_vel, red_vel=red_vel,
             blue_levels=blue_levels, red_levels=red_levels,
             channel_sigma=channel_sigma, auto_sigma=auto_sigma, sigma_contours=sigma_contours,
             red_sigma=red_sigma, blue_sigma=blue_sigma,
             blue_contour_kwargs=blue_contour_kwargs,
             red_contour_kwargs=red_contour_kwargs,
+            imshow_kwargs=imshow_kwargs,
+            show_redblue=show_redblue, redblue_mode=redblue_mode, redblue_sigscale=redblue_sigscale,
+            rscale=rscale, bscale=bscale,
+            show_contour=show_contour,
+            return_cont=False,
             # xlabel="RA [J2000]", ylabel="DEC [J2000]",
-            annotate=annotate)
-        ax_cont.set_xlabel("RA [J2000]")
-        ax_cont.set_ylabel("DEC [J2000]")
+            annotate=annotate,
+            verbose=verbose)
+
+        ax_stamp.set_xlabel("RA [J2000]")
+        ax_stamp.set_ylabel("DEC [J2000]")
 
         if show_fitcircle:
             c = Circle((coord.ra.to(u.deg).value, coord.dec.to(u.deg).value),
                     fit_radius.to(u.deg).value, edgecolor='black', lw=2,
                     linestyle='solid', facecolor='none', zorder=3,
-                    transform=ax_cont.get_transform('fk5'))
-            ax_cont.add_patch(c)
+                    transform=ax_stamp.get_transform('fk5'))
+            ax_stamp.add_patch(c)
             
 
     if show_catalogs:
         try:
-            ax_cat = ax_cont
+            ax_cat = ax_stamp
         except NameError as ne:
-            ax_cat = fig.add_subplot(nrows, ncols, i_cont)
+            ax_cat = fig.add_subplot(nrows, ncols, i_stamp)
         try:
             z = zip(catalogs, catalog_kwargs)
         except TypeError:
@@ -351,9 +409,9 @@ def plot_finder(cube,
     
     if show_outflows:
         try:
-            ax_out = ax_cont
+            ax_out = ax_stamp
         except NameError as ne:
-            ax_out = fig.add_subplot(nrows, ncols, i_cont)
+            ax_out = fig.add_subplot(nrows, ncols, i_stamp)
 
         ax_out = plot_arrows(outflow_file, ax=ax_out,
                 arrow_kwargs=outflow_kwargs, length=outflow_length, show_name=show_name)
@@ -364,12 +422,13 @@ def plot_finder(cube,
         try:
             spec.spectral_axis
         except NameError as ne:
-            print("Spectrum has not yet been extracted, doing so now...") 
-            print("""
-            Using fit_cube and fitting parameters to extract the spectrum to show,
-            if this is not what you want, you need to adjust the fit_cube, fit_radius,
-            and spec_method (and maybe coord) arguments!
-            """)
+            if verbose:
+                print("Spectrum has not yet been extracted, doing so now...") 
+                print("""
+                Using fit_cube and fitting parameters to extract the spectrum to show,
+                if this is not what you want, you need to adjust the fit_cube, fit_radius,
+                and spec_method (and maybe coord) arguments!
+                """)
             subcube = extract_subcube(fit_cube, CircleSkyRegion, 
                 region_kwargs={'center':coord,
                            'radius':fit_radius})
@@ -385,7 +444,8 @@ def plot_finder(cube,
         ax_spec.set_aspect(asp)
         ax_spec.set_xlabel(plot_spec_xlabel)
         ax_spec.set_ylabel(plot_spec_ylabel)
-        print(blue_vel, red_vel)
+        if verbose:
+            print(blue_vel, red_vel)
         
     
     if show_fit:
@@ -398,8 +458,9 @@ def plot_finder(cube,
         try:
             gauss.mean
         except NameError as ne:
-            print("Spectrum has not been fitted, probably because custom velocity ranges were used")
-            print("Fitting spectrum now...")
+            if verbose:
+                print("Spectrum has not been fitted, probably because custom velocity ranges were used")
+                print("Fitting spectrum now...")
             subcube_fit = extract_subcube(fit_cube, CircleSkyRegion, 
             region_kwargs={'center':coord,
                            'radius':fit_radius})
@@ -431,30 +492,30 @@ def plot_finder(cube,
             
     fig.subplots_adjust(wspace=0.3)
 
-    if interactive:
+    # if interactive:
         
-        # slider_ax = fig.add_axes([0.25, 0.15, 0.65, 0.03])
+    #     # slider_ax = fig.add_axes([0.25, 0.15, 0.65, 0.03])
 
 
-        # def onclick(event):
-        #     print(event.xdata)
-        #     if event.xdata <= gauss.mean:
-        #         change_vspan = bluevspan
-        #         change_cont = bluecont
-        #     else:
-        #         change_vspan = redvspan
-        #         change_cont = redcont
+    #     # def onclick(event):
+    #     #     print(event.xdata)
+    #     #     if event.xdata <= gauss.mean:
+    #     #         change_vspan = bluevspan
+    #     #         change_cont = bluecont
+    #     #     else:
+    #     #         change_vspan = redvspan
+    #     #         change_cont = redcont
 
-        print('blue_levels', blue_levels)
-        span = SpanSelector(ax_spec,
-                lambda xmin, xmax: onselect_vrange(xmin, xmax, vsplit=gauss.mean,
-                    bluevspan=bluevspan, redvspan=redvspan,
-                    ax_cont=ax_cont, bluecont=bluecont, redcont=redcont, cube=cube,
-                    spec_unit=spec_unit, blue_levels=blue_levels, red_levels=red_levels,
-                    channel_sigma=channel_sigma, auto_sigma=auto_sigma, sigma_contours=sigma_contours,
-                    red_sigma=red_sigma, blue_sigma=blue_sigma, blue_contour_kwargs=blue_contour_kwargs,
-                    red_contour_kwargs=red_contour_kwargs),
-                'horizontal', useblit=True) 
+    #     print('blue_levels', blue_levels)
+    #     span = SpanSelector(ax_spec,
+    #             lambda xmin, xmax: onselect_vrange(xmin, xmax, vsplit=gauss.mean,
+    #                 bluevspan=bluevspan, redvspan=redvspan,
+    #                 ax_cont=ax_cont, bluecont=bluecont, redcont=redcont, cube=cube,
+    #                 spec_unit=spec_unit, blue_levels=blue_levels, red_levels=red_levels,
+    #                 channel_sigma=channel_sigma, auto_sigma=auto_sigma, sigma_contours=sigma_contours,
+    #                 red_sigma=red_sigma, blue_sigma=blue_sigma, blue_contour_kwargs=blue_contour_kwargs,
+    #                 red_contour_kwargs=red_contour_kwargs),
+    #             'horizontal', useblit=True) 
 
         # cid = fig.canvas.mpl_connect('button_press_event', onclick)
         
@@ -465,11 +526,13 @@ def plot_finder(cube,
         #         'horizontal', useblit=True) 
         # fig.canvas.draw()
 
-        fig.show()
+        # fig.show()
 
     # raise
-    else: 
+    if savefig:
         fig.savefig(figname)
+    else:
+        return fig
     # plt.clf()
 
 
@@ -556,7 +619,7 @@ def onselect_vrange(vmin, vmax, bluevspan=None, redvspan=None,
             #     pass
 
     print("vmin, vmax = ", vmin, vmax)
-    mom0, n_channels = integrate_cube(cube, vmin*spec_unit, vmax*spec_unit, return_nchan=True)
+    mom0, n_channels = integrate_cube(cube, vmin*spec_unit, vmax*spec_unit, return_nchan=True, verbose=verbose)
     print(mom0.shape)
 
 
@@ -595,12 +658,13 @@ def plot_spectrum(spec, ax=None, plot_file="plot_spectrum.pdf",
     return ax
 
 
-def integrate_cube(cube, v_low, v_hi, return_nchan=False):
+def integrate_cube(cube, v_low, v_hi, return_nchan=False, verbose=True):
     """
     Returns a Projection which is the integrated intensity of cube between
     v_low and v_hi
     """
-    print("integrating {} from {} to {}".format(cube, v_low, v_hi))
+    if verbose:
+        print("integrating {} from {} to {}".format(cube, v_low, v_hi))
     cube = read_cube(cube)
     slab = cube.spectral_slab(v_low, v_hi)
     if return_nchan:
@@ -718,14 +782,26 @@ def plot_catalog(catalog, wcs=None, ax=None, plot_file="plot_catalog.pdf",
         
 
 def plot_redblue(cube, ax=None, plot_file="plot_redblue.pdf",
-        blue_vel=0*u.km/u.s, red_vel=10*u.km/u.s,
+        blue_vel=0*u.km/u.s, red_vel=10*u.km/u.s, show_contour=True, show_redblue=False,
         blue_levels=None, red_levels=None,
         channel_sigma=1.*u.K, auto_sigma=False, sigma_contours=False,
         red_sigma=None, blue_sigma=None,
         blue_contour_kwargs={"colors":'blue', "linewidths":1},
         red_contour_kwargs={'colors':'red', "linewidths":1},
+        redblue_sigscale=True, redblue_mode="subtract",
+        imshow_kwargs={"cmap":"RdBu", "interpolation":"gaussian"},
+        rscale=[0,1], bscale=[0,1],
         xlabel="RA [J2000]", ylabel="DEC [J2000]",
-        annotate=False):
+        annotate=False, return_cont=False, verbose=True):
+    """
+    redblue_mode can be either "subtract" or "rgb". 
+    "subtract" mode will show the difference between red moment0 map and 
+    blue moment 0 map, then use a diverging color map like RdBu to display this in
+    the appropriate colors. 
+    "rgb" mode makes an rgb array with g = 0 and inputs this to imshow, which uses 
+    matplotlibs rgb image plotting capabilities. I like the result of the "subtract" mode 
+    a bit more, it gives more detail, but "rgb" is bolder.
+    """
 
     cube = read_cube(cube)
     spectral_axis = cube.spectral_axis
@@ -733,20 +809,22 @@ def plot_redblue(cube, ax=None, plot_file="plot_redblue.pdf",
     try:
         assert len(blue_vel) == 2
     except TypeError as te:
-        print("Only one blue velocity inputted, integrating cube between the first channel at {} and {}.".format(
-           cube.spectral_extrema[0], blue_vel))
+        if verbose:
+            print("Only one blue velocity inputted, integrating cube between the first channel at {} and {}.".format(
+               cube.spectral_extrema[0], blue_vel))
         blue_vel = [cube.spectral_extrema[0], blue_vel]
 
-    blue_mom0, n_bluechannels = integrate_cube(cube, blue_vel[0], blue_vel[1], return_nchan=True)
+    blue_mom0, n_bluechannels = integrate_cube(cube, blue_vel[0], blue_vel[1], return_nchan=True, verbose=verbose)
 
     try:
         assert len(red_vel) == 2
     except TypeError as te:
-        print("Only one red velocity inputted, integrating cube between {} and the last channel at {}.".format(
-           red_vel, cube.spectral_extrema[1]))
+        if verbose:
+            print("Only one red velocity inputted, integrating cube between {} and the last channel at {}.".format(
+               red_vel, cube.spectral_extrema[1]))
         red_vel = [red_vel, cube.spectral_extrema[1]]
 
-    red_mom0, n_redchannels = integrate_cube(cube, red_vel[0], red_vel[1], return_nchan=True)
+    red_mom0, n_redchannels = integrate_cube(cube, red_vel[0], red_vel[1], return_nchan=True, verbose=verbose)
 
     if ax is None:
         ax = plt.subplot(projection=WCS(cube.header).celestial)
@@ -755,9 +833,11 @@ def plot_redblue(cube, ax=None, plot_file="plot_redblue.pdf",
     if auto_sigma:
         channel_width = cube.spectral_axis[1] - cube.spectral_axis[0]
         blue_sigma =  channel_width * np.sqrt(n_bluechannels * channel_sigma ** 2.)
-        print("blue sigma = ", blue_sigma)
+        if verbose:
+            print("blue sigma = ", blue_sigma)
         red_sigma =  channel_width * np.sqrt(n_redchannels * channel_sigma ** 2.)
-        print("red sigma = ", red_sigma)
+        if verbose:
+            print("red sigma = ", red_sigma)
 
     if sigma_contours:
         red_levels = red_levels * red_sigma.value
@@ -770,17 +850,61 @@ def plot_redblue(cube, ax=None, plot_file="plot_redblue.pdf",
         ax.annotate("{} to {}".format(blue_vel[0], blue_vel[1]),
             (0.1, 0.1), color="blue",
             xycoords="axes fraction")
-        
-    print("Plotting blue contours at ", blue_levels)
-    bluecont = ax.contour(blue_mom0.data, levels=blue_levels,
-            **blue_contour_kwargs)
-    print("Plotting red contours at ", red_levels)
-    redcont = ax.contour(red_mom0.data, levels=red_levels,
-            **red_contour_kwargs)
+    
+    if show_redblue:
+        if verbose:
+            print(blue_sigma, red_sigma)
+        if redblue_mode == "subtract":
+            if redblue_sigscale:
+                im = ax.imshow(((red_mom0/red_sigma) - (blue_mom0/blue_sigma)).data, **imshow_kwargs)
+            else:
+                im = ax.imshow((red_mom0 - blue_mom0).data, **imshow_kwargs)
+
+        elif redblue_mode == "rgb":
+            if redblue_sigscale:
+                r = np.array(red_mom0 / red_sigma)
+                b = np.array(blue_mom0 / blue_sigma)
+            else:
+                r = np.array(red_mom0)
+                b = np.array(blue_mom0)
+            g = np.zeros_like(r)
+            
+            rnorm = (r - r.min()) / (r.max() - r.min())
+            bnorm = (b - b.min()) / (b.max() - b.min())
+
+            rnorm = (rnorm - rscale[0]) / (rscale[1] - rscale[0])
+            rnorm[rnorm < 0.] = 0
+            rnorm[rnorm > 1.] = 1
+
+            bnorm = (bnorm - bscale[0]) / (bscale[1] - bscale[0])
+            bnorm[bnorm < 0.] = 0
+            bnorm[bnorm > 1.] = 1
+
+
+            rgb = np.dstack([rnorm, g, bnorm])
+            im = ax.imshow(rgb, **imshow_kwargs)
+
+        else:
+            print("Skipping red/blue image. redblue_mode must be either 'subtract' or 'rgb'.")
+
+
+    if show_contour:
+        if verbose:
+            print("Plotting blue contours at ", blue_levels)
+        bluecont = ax.contour(blue_mom0.data, levels=blue_levels,
+                **blue_contour_kwargs)
+        if verbose:
+            print("Plotting red contours at ", red_levels)
+        redcont = ax.contour(red_mom0.data, levels=red_levels,
+                **red_contour_kwargs)
+
+
 
     # plt.savefig(plot_file) 
-
-    return ax, bluecont, redcont
+    if return_cont:
+        return ax, bluecont, redcont
+    else:
+        return ax
 
     
      
@@ -847,6 +971,18 @@ def read_cube(cube):
         raise
     return cube
 
+
+
+class MidpointNormalize(colors.Normalize):
+    def __init__(self, vmin=None, vmax=None, midpoint=None, clip=False):
+        self.midpoint = midpoint
+        colors.Normalize.__init__(self, vmin, vmax, clip)
+
+    def __call__(self, value, clip=None):
+        # I'm ignoring masked values and all kinds of edge cases to make a
+        # simple example...
+        x, y = [self.vmin, self.midpoint, self.vmax], [0, 0.5, 1]
+        return np.ma.masked_array(np.interp(value, x, y))
 
 if __name__ == "__main__":
     main()
