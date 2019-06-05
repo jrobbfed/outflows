@@ -9,6 +9,8 @@ from astropy.io import ascii
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from regions import CircleSkyRegion, RectangleSkyRegion
+from astropy.modeling import fitting, models
+from scipy.optimize import curve_fit
 #Distance to Orion (Menten et al.)
 dist = 414*u.pc
 #CARMA-NRO Orion Map Noise Values
@@ -19,6 +21,7 @@ path_13 = "../cubes/mask_imfit_12co_pix_2_Tmb.fits"
 path_13_regrid_to_12 = "../cubes/mask_imfit_13co_pix_2_Tmb_regrid12co.fits"
 
 def main():
+
     from stamp import extract_subcube
     c12 = SpectralCube.read(path_12)
     c13 = SpectralCube.read(path_13)
@@ -368,12 +371,14 @@ def sigma_mom0(cube, channel_sigma=sig12):
     sigma_mom0 =  channel_width * np.sqrt(cube.spectral_axis.size * channel_sigma ** 2.)
     return sigma_mom0 
 
-def average_spectrum(cube=None, weights=1., axis=(1,2), return_std=True,
-    ignore_nan=True):
+
+
+def average_spectrum(cube, axis=(1,2), weights=None, ignore_nan=True,
+                    return_std=True):
     """
     Calculate the (weighted) average spectrum in a spectral cube
     Optionally calculate and return the (weighted) standard deviation
-    spectrum. `weights` should be a numpy array with the same shape as `cube`
+    spectrum. `weights` should be a cube/numpy array with the same shape as `cube`
     `axis` denotes the axis/axes to average over. For a standard SpectralCube,
     the two spatial axes are (1,2).
     Returns
@@ -381,18 +386,57 @@ def average_spectrum(cube=None, weights=1., axis=(1,2), return_std=True,
     average_spectrum : 1D array_like
     std_spectrum: 1D array_like, optional
     """
-    weighted_data = cube.filled_data[:,:,:] * weights
-    average_spectrum = np.nanmean(weighted_data, axis=axis)
-    #average_spectrum = np.average(cube.filled_data[:,:,:],
-    # weights=weights, axis=axis)
-
-    if return_std:
-        resids_squared = (cube.filled_data[:,:,:] - average_spectrum[:,np.newaxis,np.newaxis])**2. * weights
-        std_spectrum = np.sqrt(
-            np.nanmean(resids_squared, axis=axis))
-        return average_spectrum, std_spectrum
+    
+    if weights:
+        spec_mean = (cube * weights).sum(axis) / weights.sum(axis)
     else:
-        return average_spectrum
+        spec_mean = cube.mean(axis)
+#     except np.AxisError:
+#         #Weight is a 2D array
+#         spec_mean = weighted_cube.sum(axis) / weights.nansum()
+#     except AttributeError:
+#         #Weight is a constant value.
+#         spec_mean = weighted_cube.sum(axis) / weights
+    
+    if return_std:
+        if weights:
+            resids = (cube - spec_mean[:, np.newaxis, np.newaxis])**2.
+            spec_std = ((resids * weights).sum(axis) / weights.sum(axis)) ** 0.5
+        else:
+            spec_std = cube.std(axis)
+        
+        return spec_mean, spec_std
+    else:
+        return spec_mean
+
+
+
+
+# def average_spectrum(cube=None, weights=1., axis=(1,2), return_std=True,
+#     ignore_nan=True):
+#     """
+#     Calculate the (weighted) average spectrum in a spectral cube
+#     Optionally calculate and return the (weighted) standard deviation
+#     spectrum. `weights` should be a numpy array with the same shape as `cube`
+#     `axis` denotes the axis/axes to average over. For a standard SpectralCube,
+#     the two spatial axes are (1,2).
+#     Returns
+#     -------
+#     average_spectrum : 1D array_like
+#     std_spectrum: 1D array_like, optional
+#     """
+#     weighted_data = cube.filled_data[:,:,:] * weights
+#     average_spectrum = np.nanmean(weighted_data, axis=axis)
+#     #average_spectrum = np.average(cube.filled_data[:,:,:],
+#     # weights=weights, axis=axis)
+
+#     if return_std:
+#         resids_squared = (cube.filled_data[:,:,:] - average_spectrum[:,np.newaxis,np.newaxis])**2. * weights
+#         std_spectrum = np.sqrt(
+#             np.nanmean(resids_squared, axis=axis))
+#         return average_spectrum, std_spectrum
+#     else:
+#         return average_spectrum
 
 # def mask_snr(return_mask=, channel_sigma=sig12):
 
@@ -431,11 +475,94 @@ def opacity_correct_mom0(cube_thick, cube_thin, abundance_ratio=62., return_opac
         return correct_factor
 
 
+def fit_parabola(x, y, x_shift=0., fit_xrange=None, autoguess=True,
+                poly_kwargs={},
+                fitfunc=fitting.LinearLSQFitter,
+                weights=None,
+                fit_kwargs={},
+                shift_back=True):
+    if autoguess:
+        poly_kwargs.update(
+            dict(c0 = np.interp(x_shift, x, y), c1 = 0, c2 = 1, fixed={'c1':True}))
+
+    p_init = models.Polynomial1D(2, **poly_kwargs)
+    fitter = fitfunc()
+    p_fit = fitter(p_init, x - x_shift, y, weights=weights, **fit_kwargs)
+    # print(p_init, p_fit)
+    if shift_back:
+        p_shiftback = p_fit.copy()
+        p_shiftback.c0 = p_fit.c0 - p_fit.c1*x_shift + p_fit.c2*x_shift**2.
+        p_shiftback.c1 = p_fit.c1 - 2*p_fit.c2*x_shift
+        p_shiftback.c2 = p_fit.c2
+        return p_shiftback
+    else:   
+        return p_fit
+
+def fit_poly4(x, y, sigma=None, p0=None,
+    fit_xrange=None, fix_minima=False,
+    fit_kwargs=dict(), return_params=False
+    ):
+
+    if np.isfinite(fix_minima).all():
+        x_min1, x_min2 = fix_minima[0], fix_minima[1]
+        def p4_2minima_fixed(x, c0, c1, c4):
+            return p4_2minima(x, c0, c1, c4, x_min1, x_min2)
+        popt, pcov = curve_fit(p4_2minima_fixed, x, y,
+         sigma=sigma, p0=p0, **fit_kwargs)
+
+        p4_fit = lambda l: p4_2minima(l, popt[0], popt[1], popt[2], x_min1, x_min2)
+
+    else:
+        popt, pcov = curve_fit(p4, x, y, p0=p0, sigma=sigma, **fit_kwargs)
+        p4_fit = lambda l: p4(l, *popt)
+    if return_params:
+        return p4_fit, popt
+    else:
+        return p4_fit
+
+
+
+def p4(x, c0, c1, c2, c3, c4):
+    return c0 + c1*x + c2*x**2 + c3*x**3 + c4*x**4
+
+def p4_2minima(x, c0, c1, c4, x_min1, x_min2):
+    """
+    This is a 4th order polynomial with two minima, at x_min1 and x_min2.
+    I derived this by setting the first derivative of a general 4th-order polynomial
+    equal to zero and factoring out the roots, then expressing the general 
+    polynomical coefficients in terms of the x-values of the minima. The x-value of the
+    local maximum is also shown.
+    """
+    x_max = -c1/(4*c4*x_min1*x_min2)
+#     print(x_max)
+    c2 = 2*c4*(x_min1*x_max + x_min2*x_max + x_min1*x_min2)
+    c3 = -(4./3)*c4*(x_max + x_min1 + x_min2)
+    return c0 + c1*x + c2*x**2 + c3*x**3 + c4*x**4
+
+def cube_ratio(cubes=[None, None], rms=[None, None], return_ratiorms=True):
+    """
+    Returns spectral cube with ratio (uncertainties on the ratio) between
+    two cubes. Uncertainity calculated with error propagation assuming
+    the error on each cube is given by the rms in emission-free channels.
+    """
+    cube_ratio = cubes[0] / cubes[1]
+    if return_ratiorms:
+        cube_ratio_rms = cube_ratio * (
+            (cubes[0] / rms[0]) ** -2. +
+            (cubes[1] / rms[1]) ** -2.) ** 0.5
+        return cube_ratio, cube_ratio_rms
+    else:
+        return cube_ratio
 
 def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62.,
-    snr_cutoff=5., empty_velocity_range=[[-3.,-0.1], [19.,20.]]*u.km/u.s,
-    regrid_cube=False, plot_ratio=None,
-    fit=True, fit_order=2, **kwargs):
+    snr_cutoff=0., rms_thick=0.86*u.K, rms_thin=0.39*u.K, calc_rms=False,
+    empty_velocity_range=[[-2.,0], [18.,20.]]*u.km/u.s, vsys=7*u.km/u.s,
+
+    plot_ratio=None, plot_xlim=[0,18], plot_ylim=[0,20], errorbar_kwargs=dict(marker='s', ls=''),
+    plot_kwargs=dict(),
+
+    fit_range=[6, 8]*u.km/u.s, fit_kwargs=dict(autoguess=True, shift_back=True),
+    fit=True, fit_func="parabola", return_factor=False):
     """
     Correct an optically thick emission line cube using an (assumed) optically
     thin emission line cube. The abundance ratio betweeen the cube and cube_thin
@@ -446,61 +573,72 @@ def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62.,
     
     Uses method detailed in Zhang et al 2016 (c.f. Dunham+14, Arce+2001)
     """
-    if regrid_cube:
-        cube_thin = regrid(cube_thin, cube_thick.spectral_axis)
 
-    rms_thick = rms_map(cube_thick, empty_velocity_range)
-    rms_thin = rms_map(cube_thin, empty_velocity_range)
+    if calc_rms:
+        rms_thick = rms(cube_thick, empty_velocity_range)
+        rms_thin = rms(cube_thin, empty_velocity_range)
 
-    cube_thick_masked = mask_snr(cube_thick, rms_thick,
-     snr=snr_cutoff)
-    cube_thin_masked = mask_snr(cube_thin, rms_thin,
-     snr=snr_cutoff)
+    cube_thick_ratiomask = cube_thick.with_mask(cube_thick > snr_cutoff*rms_thick).with_mask(cube_thin > snr_cutoff*rms_thin)
+    cube_thin_ratiomask = cube_thin.with_mask(cube_thin > snr_cutoff*rms_thin).with_mask(cube_thick > snr_cutoff*rms_thick)
 
-    ratio, sigma_ratio = cube_ratio(
-        cubes=[cube_thick_masked, cube_thin_masked],
-        rms_maps=[rms_thick, rms_thin],
-        return_uncertainty=True)
+    ratio, ratio_rms = cube_ratio(
+        cubes=[cube_thick_ratiomask, cube_thin_ratiomask],
+        rms=[rms_thick, rms_thin],
+        return_ratiorms=True)
 
-    #print(ratio.size, ratio.flattened().size)
-    weights = 1. / (sigma_ratio.filled_data[:,:,:]**2.)
-    #print(weights)
-    average_ratio, std_ratio = average_spectrum(
-        cube=ratio, weights=weights)
-    #print(average_ratio, std_ratio, weights)
+    weights = ratio_rms ** -2
+
+    ratiospec, ratiospec_rms = average_spectrum(ratio, weights=weights)
 
     if fit:
         #Fit with quadratic
-        notnan = ~np.isnan(average_ratio)
-        vel = ratio.spectral_axis.to(u.km/u.s).value
+        ii_specfit = (ratiospec.spectral_axis > fit_range[0]) & (ratiospec.spectral_axis < fit_range[1])
+
+        if fit_func == "parabola":
+            p_fit = fit_parabola(ratiospec.spectral_axis[ii_specfit], ratiospec[ii_specfit],
+                x_shift=vsys, weights=(ratiospec_rms[ii_specfit])**-1)
+            ratiospec_fit_clip = p_fit(cube_thick.spectral_axis).clip(0, abundance_ratio)
+
+        elif fit_func == "poly4":
+            print(vsys.to(ratiospec.spectral_axis.unit).value)
+            p_fit = fit_poly4(ratiospec.spectral_axis[ii_specfit].value, ratiospec[ii_specfit].value,
+                sigma=ratiospec_rms[ii_specfit].value,
+                fix_minima=vsys.to(ratiospec.spectral_axis.unit).value)
+            ratiospec_fit_clip = p_fit(cube_thick.spectral_axis.value).clip(0, abundance_ratio)
+        # vel = ratio.spectral_axis.to(u.km/u.s).value
         #print(vel[notnan], average_ratio[notnan])
-        fit_coeff, fit_cov = np.polyfit(vel[notnan], average_ratio[notnan],
-            fit_order, w=(1/std_ratio[notnan]), cov=True)
 
-        fit_func = np.poly1d(fit_coeff)
-        ratio_spectrum_fit = fit_func(vel)
-        cube_correct = (
-        cube_thick * abundance_ratio / ratio_spectrum_fit[:,np.newaxis,np.newaxis]) #X_12,13 / (T_12/T_13)
+        factor = abundance_ratio * (ratiospec_fit_clip[:,np.newaxis,np.newaxis])**-1.
+        cube_correct = cube_thick * factor #X_12,13 / (T_12/T_13)
 
-    else:
-        cube_correct = cube_thick * abundance_ratio / average_ratio[:,np.newaxis,np.newaxis]
-
-    if plot_ratio: 
-        plt.plot(vel, average_ratio, 'o')
+    if plot_ratio:
+        ax = plt.subplot()
+        ax.errorbar(ratiospec.spectral_axis.value/1000, ratiospec.value, yerr=ratiospec_rms.value,
+         **errorbar_kwargs)
+        # plt.plot(np.linspace(-1000,1000)+7000, p_fit2(np.linspace(-1000,1000)*u.m/u.s))
+        # ax.axhline(abundance_ratio)
+        ax.set_xlim(plot_xlim)
+        ax.set_ylim(plot_ylim)
 
         if fit:
-            xfit = np.linspace(vel[notnan][0], vel[notnan][-1], 1000)
-            yfit = fit_func(xfit)
-            plt.plot(xfit, yfit)
-        plt.fill_between(vel,
-            average_ratio+std_ratio, average_ratio-std_ratio,
-                alpha=0.3)
-        plt.ylabel(r"T$_{12}$ / T$_{13}$", size=16)
-        plt.xlabel("Velocity [km / s]", size=16)
-        #plt.ylim(1.3,3.9)
-        plt.title("Weighted Average and Std. Dev. of 5sigma 12CO/13CO Ratio")
-        plt.savefig(plot_ratio)
+            if fit_func == "parabola":
+                ax.plot(ratiospec.spectral_axis.value/1000, p_fit(ratiospec.spectral_axis).clip(0,abundance_ratio), ':',
+                        ratiospec.spectral_axis.value[ii_specfit]/1000, p_fit(ratiospec.spectral_axis[ii_specfit]).clip(0,abundance_ratio), '-',
+                    **plot_kwargs)
+            elif fit_func == "poly4":
+                ax.plot(ratiospec.spectral_axis.value/1000, p_fit(ratiospec.spectral_axis.value).clip(0,abundance_ratio), ':',
+                        ratiospec.spectral_axis.value[ii_specfit]/1000, p_fit(ratiospec.spectral_axis[ii_specfit].value).clip(0,abundance_ratio), '-',
+                    **plot_kwargs)
 
+        ax.set_ylabel(r"T$_{12}$ / T$_{13}$", size=16)
+        ax.set_xlabel("Velocity [km / s]", size=16)
+        plt.tight_layout()
+        try:
+            plt.savefig(plot_ratio)
+        except:
+            plt.show()
+    if return_factor:
+        return cube_correct, factor
     return cube_correct
 
 def column_density_H2(cube, Tex,
@@ -569,19 +707,44 @@ def Qrot_partial(Tex, B0_k=2.765*u.K, N=100):
     return Qrot
 
 
+def dmdv(cube, molecule='12co', Tex=30*u.K, distance=414*u.pc,
+    spectral_unit=u.km/u.s, mass_unit=u.Msun,
+    return_cube=False):
+    """
+    Compute mass spectrum (sum of mass per channel)
+    of a given, optionally masked, SpectralCube. For now, 
+    assume optically thin, but should implement an optional
+    opacity correction.
+    """
+    cube = cube.with_spectral_unit(spectral_unit)
+    nH2 = column_density_H2(cube, Tex=Tex, moment0=False,
+        molecule=molecule)
+    mass_cube = mass(nH2, distance=distance, molecule='H2',
+        return_map=True, mass_unit=mass_unit).to(mass_unit/spectral_unit)
+    dmdv = mass_cube.sum((1,2))
+    if return_cube:
+        return dmdv, mass_cube
+    else:
+        return dmdv
+
 
 def mass(column_density, distance=414*u.pc, molecule='H2',
     return_map=False, mass_unit=u.Msun):
     """
-    
+    If column_density is a cube, return_map will return mass cube.
     """
     if molecule == 'H2':
-        mass_per_molecule = 2.34e-24*u.gram
+        mass_per_molecule = 2.34e-24*u.gram 
 
     pixel_angle = abs(column_density.header['CDELT2']) * u.deg
     pixel_area = (pixel_angle.to(u.radian).value * distance)**2.
     #n_pixels = nH2[~np.isnan(nH2)].size
-    mass_map = (column_density * mass_per_molecule * pixel_area).to(mass_unit)
+    try:
+        mass_map = (column_density * mass_per_molecule * pixel_area).to(mass_unit)
+    except:
+        mass_map = (column_density * mass_per_molecule * pixel_area)
+
+
     if return_map:
         return mass_map
     else:

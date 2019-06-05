@@ -905,20 +905,57 @@ def plot_redblue(cube, ax=None, plot_file="plot_redblue.pdf",
         return ax, bluecont, redcont
     else:
         return ax
+def fit_gaussian(x, y, autoguess=False, n_models=1, gaussian_kwargs={"amplitude":1., "mean":0, "stddev":1.},
+                 fit_func=fitting.LevMarLSQFitter(),
+                 fit_kwargs={}):
 
-    
-     
-def fit_gaussian(x, y, autoguess=False, gaussian_kwargs={"amplitude":1., "mean":0, "stddev":1.},
-        fit_kwargs={}):
-    if autoguess:
-        gaussian_kwargs={"amplitude":y.max() - y.min(),
-                "mean":x[y.argmax()],
-                "stddev":abs(x[y.argmax()] - x[y.argmin()])}
-        print("Guessing these parameters: ", gaussian_kwargs)
-    g_init = models.Gaussian1D(**gaussian_kwargs)
-    fit_g = fitting.LevMarLSQFitter()
-    g = fit_g(g_init, x, y, **fit_kwargs) 
-    return g
+    """
+    Adjust n_models to > 1 to fit n gaussians to spectrum.
+
+    """
+    if n_models > 1 or np.size(gaussian_kwargs["mean"]) > 1:
+        if autoguess:
+            print("Autoguess is not yet implemented for multiple gaussian fitting.")
+            raise
+        
+        try:
+            y_unit = u.utils.quantity_asanyarray(gaussian_kwargs["amplitude"]).unit
+            y = y.to(y_unit).value
+        except AttributeError:
+            pass
+
+        try:
+            x_unit = u.utils.quantity_asanyarray(gaussian_kwargs["mean"]).unit
+            x = x.to(x_unit).value
+        except AttributeError:
+            pass
+        
+        #Ensure any single-value gaussian parameters are replicated into lists
+        #of the length of n_models.
+        for key, val in gaussian_kwargs.items():
+            if np.size(val) == 1:
+                val = list([val]) * int(n_models)
+                gaussian_kwargs[key] = val
+                
+        g_list = []
+        for imodel in range(n_models):
+            kwargs = dict([(key, gaussian_kwargs[key][imodel].value) for key in gaussian_kwargs.keys()])
+            g_list.append(models.Gaussian1D(**kwargs))
+        
+        
+        g_sum = np.sum(g_list)
+        g_fit = fit_func(g_sum, x, y, **fit_kwargs)
+        
+    else:
+        if autoguess:
+            gaussian_kwargs={"amplitude":y.max() - y.min(),
+                    "mean":x[y.argmax()],
+                    "stddev":abs(x[y.argmax()] - x[y.argmin()])}
+            print("Guessing these parameters: ", gaussian_kwargs)
+        g_init = models.Gaussian1D(**gaussian_kwargs)
+        g_fit = fit_func(g_init, x, y, **fit_kwargs) 
+        
+    return g_fit
 
 def extract_subcube(cube, region_class=CircleSkyRegion, region_kwargs={}):
     """
