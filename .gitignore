@@ -5,3 +5,4 @@ glue/
 .ipynb_checkpoints/
 .DS_Store
 *.aj
+*.fits

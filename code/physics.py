@@ -292,9 +292,9 @@ def cube_Tex(cube, thick=True, snr_cutoff=0,
     if average:
         if average_first:
             average_spec = average_spectrum(cube, return_std=False)
-            Tpeak = np.max(average_spec)
+            Tpeak = average_spec.max()
         else:
-            Tpeak = np.average(cube.max(axis=0))
+            Tpeak = np.nanmean(cube.max(axis=0).filled_data)*cube.unit
     else:
         Tpeak = cube.max(axis=0)
 
@@ -335,7 +335,7 @@ def rms(cube=None, velocity_range=[[-3.,-0.1], [19.,20.]]*u.km/u.s,
         emissionless_channels = np.concatenate(
             [np.arange(c[0], c[1]+1) for c in channel_range])
 
-    emissionless_cube = cube.unmasked_data[emissionless_channels,:,:]
+    emissionless_cube = cube.filled_data[emissionless_channels,:,:]
 
 
     if return_map:
@@ -370,8 +370,6 @@ def sigma_mom0(cube, channel_sigma=sig12):
     channel_width = cube.spectral_axis[1] - cube.spectral_axis[0]
     sigma_mom0 =  channel_width * np.sqrt(cube.spectral_axis.size * channel_sigma ** 2.)
     return sigma_mom0 
-
-
 
 def average_spectrum(cube, axis=(1,2), weights=None, ignore_nan=True,
                     return_std=True):
@@ -476,14 +474,14 @@ def opacity_correct_mom0(cube_thick, cube_thin, abundance_ratio=62., return_opac
 
 
 def fit_parabola(x, y, x_shift=0., fit_xrange=None, autoguess=True,
-                poly_kwargs={},
+                poly_kwargs={}, fix_minima=True,
                 fitfunc=fitting.LinearLSQFitter,
                 weights=None,
                 fit_kwargs={},
                 shift_back=True):
     if autoguess:
         poly_kwargs.update(
-            dict(c0 = np.interp(x_shift, x, y), c1 = 0, c2 = 1, fixed={'c1':True}))
+            dict(c0 = np.interp(x_shift, x, y), c1 = 0, c2 = 1, fixed={'c1':fix_minima}))
 
     p_init = models.Polynomial1D(2, **poly_kwargs)
     fitter = fitfunc()
@@ -503,7 +501,7 @@ def fit_poly4(x, y, sigma=None, p0=None,
     fit_kwargs=dict(), return_params=False
     ):
 
-    if np.isfinite(fix_minima).all():
+    if np.array(fix_minima).all():
         x_min1, x_min2 = fix_minima[0], fix_minima[1]
         def p4_2minima_fixed(x, c0, c1, c4):
             return p4_2minima(x, c0, c1, c4, x_min1, x_min2)
@@ -560,7 +558,7 @@ def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62.,
 
     plot_ratio=None, plot_xlim=[0,18], plot_ylim=[0,20], errorbar_kwargs=dict(marker='s', ls=''),
     plot_kwargs=dict(),
-
+    weighted_fit=True, fixed_fit=True,
     fit_range=[6, 8]*u.km/u.s, fit_kwargs=dict(autoguess=True, shift_back=True),
     fit=True, fit_func="parabola", return_factor=False):
     """
@@ -595,15 +593,27 @@ def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62.,
         ii_specfit = (ratiospec.spectral_axis > fit_range[0]) & (ratiospec.spectral_axis < fit_range[1])
 
         if fit_func == "parabola":
+            if weighted_fit:
+                weights = (ratiospec_rms[ii_specfit])**-1
+            else:
+                weights = None
             p_fit = fit_parabola(ratiospec.spectral_axis[ii_specfit], ratiospec[ii_specfit],
-                x_shift=vsys, weights=(ratiospec_rms[ii_specfit])**-1)
+                x_shift=vsys, weights=weights, fix_minima=fixed_fit)
             ratiospec_fit_clip = p_fit(cube_thick.spectral_axis).clip(0, abundance_ratio)
 
         elif fit_func == "poly4":
             print(vsys.to(ratiospec.spectral_axis.unit).value)
+            if weighted_fit:
+                sigma = ratiospec_rms[ii_specfit].value
+            else:
+                sigma = None
+            if fixed_fit:
+                fix_minima = vsys.to(ratiospec.spectral_axis.unit).value
+            else:
+                fix_minima = None
             p_fit = fit_poly4(ratiospec.spectral_axis[ii_specfit].value, ratiospec[ii_specfit].value,
-                sigma=ratiospec_rms[ii_specfit].value,
-                fix_minima=vsys.to(ratiospec.spectral_axis.unit).value)
+                sigma=sigma,
+                fix_minima=fix_minima)
             ratiospec_fit_clip = p_fit(cube_thick.spectral_axis.value).clip(0, abundance_ratio)
         # vel = ratio.spectral_axis.to(u.km/u.s).value
         #print(vel[notnan], average_ratio[notnan])
@@ -726,6 +736,326 @@ def dmdv(cube, molecule='12co', Tex=30*u.K, distance=414*u.pc,
         return dmdv, mass_cube
     else:
         return dmdv
+
+
+def ambient_correct(dmdv, n_models=1, autoguess=True, 
+    find_peaks_kwargs=dict(height=0.1, width=2, rel_height=0.5),
+    gaussian_kwargs=dict(), fit_func=fitting.LevMarLSQFitter(),
+    plot=False):
+    from stamp import fit_gaussian
+    from spectral_cube import OneDSpectrum
+
+    x, y = dmdv.spectral_axis, dmdv
+
+    dmdv_fit = fit_gaussian(x, y, n_models=n_models, autoguess=autoguess,
+                            gaussian_kwargs=gaussian_kwargs, find_peaks_kwargs=find_peaks_kwargs,
+                            fit_func=fit_func)
+
+    try:
+        dmdv_out = (y.value - dmdv_fit(x.value))*dmdv.unit
+        # print(dmdv_out.spectral_axis)
+    except u.UnitsError:
+        dmdv_out = y - dmdv_fit(x)
+    dmdv_out = dmdv_out.clip(0., np.inf) 
+
+    dmdv_out = OneDSpectrum(dmdv_out, wcs=dmdv.wcs, spectral_unit=dmdv.spectral_axis.unit)
+
+
+    if plot:
+        plt.plot(x, y, label="Total")
+        try:
+            plt.plot(np.linspace(x[0], x[-1], 1000), dmdv_fit(np.linspace(x[0], x[-1], 1000)), label="Cloud Fit")
+        except u.UnitsError:
+            plt.plot(np.linspace(x[0], x[-1], 1000).value, dmdv_fit(np.linspace(x[0], x[-1], 1000).value), label="Cloud Fit")
+        plt.plot(x, dmdv_out, label="Outflow")
+        plt.semilogy()
+        plt.ylim(0.001, 10)
+        plt.xlim(-2, 20)
+        plt.xlabel("v [km/s]")
+        plt.ylabel(r"dM/dv [M$_\odot$ (km/s)$^{-1}$]")
+
+
+    return dmdv_out
+
+
+def sum_dmdv(dmdv, vsys=None, vrange='auto', dv=1*u.km/u.s,
+    return_lobes=False):
+    """
+    Integrate an input mass spectrum. Integrate to within +/- dv of vsys,
+    or if there are multiple components, within +dv of the max vsys and -dv of the min vsys.
+
+    Alternative, can set a specific velocity range to integrate over.
+
+    dmdv must be astro.units.quantity.Quantity object with units of mass/velocity.
+    """
+
+    try:
+        dmdv.unit.to(u.Msun/(u.km/u.s))
+    except u.UnitConversionError:
+        print("dmdv must be in units of mass/velocity.")
+        raise
+
+    channel_width = dmdv.spectral_axis[1] - dmdv.spectral_axis[0]
+
+    if vrange == 'auto':
+        if vsys is None:
+            print("Must set vsys in order to use auto vrange.")
+            raise
+        elif np.size(vsys) > 1:
+            i_blue = dmdv.spectral_axis < (min(vsys) - dv)
+            i_red = dmdv.spectral_axis > (max(vsys) + dv)
+        else:
+            i_blue = dmdv.spectral_axis < vsys - dv
+            i_red = dmdv.spectral_axis > vsys + dv
+
+        mass_blue = dmdv[i_blue].nansum()*channel_width
+        mass_red = dmdv[i_red].nansum()*channel_width
+        mass = mass_blue + mass_red
+
+    elif np.ndim(vrange) > 2:
+        mass = 0
+        for vra in vrange:
+            i_vra = (dmdv.spectral_axis >= min(vra)) & (dmdv.spectral_axis <= max(vra))
+            mass += dmdv[i_vra].nansum()*channel_width
+    else:
+        i_vra = (dmdv.spectral_axis >= vrange[0]) & (dmdv.spectral_axis <= vrange[1])
+        mass = dmdv[i_vra].nansum()*channel_width
+
+    if return_lobes:
+        return mass_blue, mass_red
+    else:
+        return mass
+
+def momentum_dmdv(dmdv, vsys=None, vrange='auto', dv=1*u.km/u.s, 
+    return_lobes=False):
+
+    try:
+        dmdv.unit.to(u.Msun/(u.km/u.s))
+    except u.UnitConversionError:
+        print("dmdv must be in units of mass/velocity.")
+        raise
+
+    channel_width = dmdv.spectral_axis[1] - dmdv.spectral_axis[0]
+
+    if vrange == 'auto':
+        if vsys is None:
+            print("Must set vsys in order to use auto vrange.")
+            raise
+        elif np.size(vsys) > 1:
+            i_blue = dmdv.spectral_axis <= (min(vsys) - dv)
+            i_red = dmdv.spectral_axis >= (max(vsys) + dv)
+            i_between = (dmdv.spectral_axis > (min(vsys) - dv)) & (dmdv.spectral_axis < (max(vsys) + dv))
+            v_out_blue = abs(min(vsys) - dmdv.spectral_axis)
+            # print(v_out_blue)
+            v_out_red = abs(max(vsys) - dmdv.spectral_axis)
+        else:
+            i_blue = dmdv.spectral_axis < vsys - dv
+            i_red = dmdv.spectral_axis > vsys + dv
+            i_between = (dmdv.spectral_axis > vsys - dv) & (dmdv.spectral_axis < vsys + dv)
+            v_out_blue = abs(vsys - dmdv.spectral_axis)
+            v_out_red = abs(vsys - dmdv.spectral_axis)
+
+        v_out = v_out_blue
+        # print(v_out)
+        v_out[i_blue] = v_out_blue[i_blue]
+        v_out[i_red] = v_out_red[i_red]
+        v_out[i_between] = 0
+        # print(v_out)
+        mom_blue = (dmdv[i_blue]*v_out[i_blue]).nansum()*channel_width
+        mom_red = (dmdv[i_red]*v_out[i_red]).nansum()*channel_width
+        mom = mom_blue + mom_red
+
+    elif np.ndim(vrange) > 2:
+        mom = 0
+        for vra in vrange:
+            i_vra = (dmdv.spectral_axis >= min(vra)) & (dmdv.spectral_axis <= max(vra))
+            v_out = abs(vsys - dmdv.spectral_axis)
+            mom += (dmdv[i_vra]*v_out[i_vra]).nansum()*channel_width
+
+    else:
+        i_vra = (dmdv.spectral_axis >= vrange[0]) & (dmdv.spectral_axis <= vrange[1])
+        v_out = abs(vsys - dmdv.spectral_axis)
+        mom = (dmdv[i_vra]*v_out[i_vra]).nansum()*channel_width
+
+    if return_lobes:
+        return mom_blue, mom_red
+    else:
+        return mom
+
+
+
+def energy_dmdv(dmdv, vsys=None, vrange='auto', dv=1*u.km/u.s, 
+    return_lobes=False):
+
+    try:
+        dmdv.unit.to(u.Msun/(u.km/u.s))
+    except u.UnitConversionError:
+        print("dmdv must be in units of mass/velocity.")
+        raise
+
+    channel_width = dmdv.spectral_axis[1] - dmdv.spectral_axis[0]
+
+    if vrange == 'auto':
+        if vsys is None:
+            print("Must set vsys in order to use auto vrange.")
+            raise
+        elif np.size(vsys) > 1:
+            i_blue = dmdv.spectral_axis <= (min(vsys) - dv)
+            i_red = dmdv.spectral_axis >= (max(vsys) + dv)
+            i_between = (dmdv.spectral_axis > (min(vsys) - dv)) & (dmdv.spectral_axis < (max(vsys) + dv))
+            v_out_blue = abs(min(vsys) - dmdv.spectral_axis)
+            v_out_red = abs(max(vsys) - dmdv.spectral_axis)
+        else:
+            i_blue = dmdv.spectral_axis < vsys - dv
+            i_red = dmdv.spectral_axis > vsys + dv
+            i_between = (dmdv.spectral_axis > vsys - dv) & (dmdv.spectral_axis < vsys + dv)
+            v_out_blue = abs(vsys - dmdv.spectral_axis)
+            v_out_red = abs(vsys - dmdv.spectral_axis)
+
+        v_out = v_out_blue
+
+        v_out[i_blue] = v_out_blue[i_blue]
+        v_out[i_red] = v_out_red[i_red]
+        v_out[i_between] = 0
+
+        energy_blue = 0.5*(dmdv[i_blue]*v_out[i_blue]**2.).nansum()*channel_width
+        energy_red = 0.5*(dmdv[i_red]*v_out[i_red]**2.).nansum()*channel_width
+        energy = energy_blue + energy_red
+
+    elif np.ndim(vrange) > 2:
+        energy = 0
+        for vra in vrange:
+            i_vra = (dmdv.spectral_axis >= min(vra)) & (dmdv.spectral_axis <= max(vra))
+            v_out = abs(vsys - dmdv.spectral_axis)
+            energy += 0.5*(dmdv[i_vra]*v_out[i_vra]**2.).nansum()*channel_width
+    else:
+        i_vra = (dmdv.spectral_axis >= vrange[0]) & (dmdv.spectral_axis <= vrange[1])
+        v_out = abs(vsys - dmdv.spectral_axis)
+        energy = 0.5*(dmdv[i_vra]*v_out[i_vra]**2.).nansum()*channel_width
+
+    if return_lobes:
+        return energy_blue, energy_red
+    else:
+        return energy
+
+def vmax_cube(cube, vsys=0*u.km/u.s, snr=0, min_pixels=1,
+         empty_velocity_range=[-2,0]*u.km/u.s,
+         return_lobes=True, plot=False):
+    """
+    Returns the maximum outflow velocity on either side of vsys in the given cube.
+    """
+    if snr:
+        rms = rms(cube, velocity_range=empty_velocity_range)
+        cube = cube.with_mask(snr*rms)
+
+    if np.size(vsys) > 1:
+            v_out_blue = min(vsys) - cube.spectral_axis
+            v_out_red = -max(vsys) + cube.spectral_axis
+    else:
+            v_out_blue = vsys - cube.spectral_axis
+            v_out_red = -vsys + cube.spectral_axis
+    #Selects channels where at least min_pixels are detected to the given snr threshold. 
+    chans_detected = np.count_nonzero(~cube.apply_numpy_function(np.isnan), axis=(1,2)) >= min_pixels
+
+    vmax_blue = min(v_out_blue[(~chans_detected) & (v_out_blue > 0)]) - cube.spectral_axis.diff()[0]
+    vmax_red = min(v_out_red[(~chans_detected) & (v_out_red > 0)]) - cube.spectral_axis.diff()[0]
+    # vmax_blue = cube.spectral_axis[]
+
+    if plot:
+        plt.plot(cube.spectral_axis.to(u.km/u.s), cube.mean((1,2)))
+        plt.axvline((vsys - vmax_blue).value, label=r"Blue v$_{max}$", ls=':', color='tab:blue')
+        plt.axvline((vsys + vmax_red).value,  label=r"Red v$_{max}$", ls=':', color='tab:red')
+
+    return vmax_blue.to(u.km/u.s), vmax_red.to(u.km/u.s)
+
+def rmax_cube(cube, coord_zero=None, dist=414*u.pc, plot=False):
+    """
+    Calculates the maximum distance from a specific coordinate in a cube. If coord_zero
+    is None, defaults to calculating the distanc from the central pixel. The cube should
+    be masked to only calculate the maximum distance inside the outflow mask. 
+    """
+    from astropy.wcs.utils import proj_plane_pixel_scales
+
+    if coord_zero is None:
+        coord_zero = SkyCoord(cube.longitude_extrema.mean(), cube.latitude_extrema.mean()) 
+
+    dec, ra = cube.spatial_coordinate_map
+    dec = dec - coord_zero.dec
+    ra = ra - coord_zero.ra
+    dist_arr = (ra**2 + dec**2)**0.5 * (2*np.pi / (360*u.deg)) * dist
+
+    isnan = np.isnan(cube[0])
+    dist_arr[isnan] = np.nan
+    rmax = np.nanmax(dist_arr)
+
+    if plot:
+        dist_arr[isnan] = np.nan
+        plt.imshow(dist_arr.value, origin='lower')
+        plt.colorbar()
+
+    return rmax
+
+def outflow_angles(cube, pa_guess=0*u.deg, autoguess=False,
+    coord_zero=None, plot=False, bins='knuth',
+    plothist_kwargs=dict(),
+    plotfit_kwargs=dict(),
+    fit_kwargs=dict(autoguess=True)):
+    """
+    Input a cube with outflow lobe mask.
+    """
+    from stamp import fit_gaussian
+    from astropy.visualization import hist as plot_hist
+    from astropy.stats import histogram as hist
+
+    dec, ra = cube.spatial_coordinate_map
+
+    if coord_zero is None:
+        coord_zero = SkyCoord(np.mean(cube.longitude_extrema), np.mean(cube.latitude_extrema))
+
+    ra = ra - coord_zero.ra
+    dec = dec - coord_zero.dec
+
+    #Ranges from [-pi, pi] radians, East of North
+    pa_arr = np.arctan2(ra, dec)
+
+    if autoguess:
+        mom0 = cube.moment0()
+        ra_peak = ra[mom0 == np.nanmax(mom0)][0]
+        dec_peak = dec[mom0 == np.nanmax(mom0)][0]
+        pa_guess = np.arctan2(ra_peak.value, dec_peak.value)*180*u.deg/(np.pi)
+
+    print("Guessing position angle of {}".format(pa_guess))
+
+    #Rotate the positional angle array by the inital guess value for the outflow pa.
+    c, s = np.cos(pa_guess), np.sin(pa_guess)
+    R = np.array([[c,-s], [s, c]])
+    rot = R.dot(np.array([ra.flatten(),dec.flatten()]))
+    ra_rot, dec_rot = rot.reshape(np.array([ra,dec]).shape)
+    pa_arr_rot = np.arctan2(ra_rot, dec_rot)
+
+    pa_arr_rot = pa_arr_rot[~np.isnan(cube[0])]
+
+    if plot:
+        hist, bin_edges, patches = plot_hist(pa_arr_rot.flatten()*180/np.pi, bins='knuth', **plothist_kwargs)
+    else:
+        hist, bin_edges = hist(pa_arr_rot.flatten()*180/np.pi, bins='knuth')
+
+    bin_centers = np.array([0.5 * (bin_edges[i] + bin_edges[i+1]) for i in range(len(bin_edges)-1)])
+
+    g = fit_gaussian(bin_centers, hist, **fit_kwargs)
+
+    position_angle = pa_guess + g.mean*u.deg
+
+    fwqm = 3.3302*g.stddev
+    opening_angle = fwqm*u.deg
+
+    if plot:
+        plt.plot(bin_centers, g(bin_centers), **plotfit_kwargs)
+        plt.xlabel("PA - {:.2g} [deg]".format(pa_guess))
+        plt.ylabel("Pixels")
+
+    return position_angle, opening_angle
+
 
 
 def mass(column_density, distance=414*u.pc, molecule='H2',

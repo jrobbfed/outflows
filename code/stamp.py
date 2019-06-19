@@ -198,40 +198,40 @@ def main():
 #                 )
 
 # ### Plot stamps around Orion-KL
-#     blue_step = red_step = 1
-#     blue_left = np.arange(-2, 4+blue_step, blue_step)
-#     red_left = np.arange(12, 18+red_step, red_step)[::-1]
+    blue_step = red_step = 1
+    blue_left = np.arange(-2, 4+blue_step, blue_step)
+    red_left = np.arange(12, 18+red_step, red_step)[::-1]
 
-#     for blue, red in zip(blue_left, red_left): 
-#         blue_vel = [blue,blue+2]*u.km/u.s
-#         red_vel = [red,red+2]*u.km/u.s
-#         dofit=0
-#         width=height=5*u.arcmin
-#         start = 10
-#         stop = 200
-#         step = 20
-#         contour_levels = np.arange(start, stop, step)
-#         show_name=0
-#         if dofit:
-#             figname = "finders/omc1/orionkl/orionkl_fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
-#         elif len(blue_vel) == 1:
-#             figname = "finders/omc1/orionkl/orionkl_blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
-#                 start, stop, step)
-#         else:
-#             figname = "finders/omc1/orionkl/orionkl_blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel[0].value, blue_vel[1].value,
-#              red_vel[0].value, red_vel[1].value, width.value, start, stop, step)
-#         # print(hops_id)
-#         c = SkyCoord("5h35m14s", "-5d22m30s")
-#         plot_finder(cube12, coord=c,
-#                 fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
-#                 nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
-#                 figname=figname,
-#                 region_width=width, region_height=height,
-#                 blue_levels=contour_levels, red_levels=contour_levels,
-#                 show_stamp=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
-#                 show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
-#                 interactive=False
-#                 ) 
+    for blue, red in zip(blue_left, red_left): 
+        blue_vel = [blue,blue+2]*u.km/u.s
+        red_vel = [red,red+2]*u.km/u.s
+        dofit=0
+        width=height=5*u.arcmin
+        start = 10
+        stop = 200
+        step = 20
+        contour_levels = np.arange(start, stop, step)
+        show_name=0
+        if dofit:
+            figname = "finders/omc1/orionkl/orionkl_fitspec_{}arcmin_{}to{}step{}sig.pdf".format(width.value, start, stop, step)
+        elif len(blue_vel) == 1:
+            figname = "finders/omc1/orionkl/orionkl_blue{}kms_red{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel.value, red_vel.value, width.value,
+                start, stop, step)
+        else:
+            figname = "finders/omc1/orionkl/orionkl_blue{}to{}kms_red{}to{}kms_{}arcmin_{}to{}step{}sig.pdf".format(blue_vel[0].value, blue_vel[1].value,
+             red_vel[0].value, red_vel[1].value, width.value, start, stop, step)
+        # print(hops_id)
+        c = SkyCoord("5h35m14s", "-5d22m30s")
+        plot_finder(cube12, coord=c,
+                fit_cube=cube12, fit_radius=15*u.arcsec, fit_spectrum=dofit,
+                nsigma_vel=2, blue_vel=blue_vel, red_vel=red_vel,
+                figname=figname,
+                region_width=width, region_height=height,
+                blue_levels=contour_levels, red_levels=contour_levels,
+                show_stamp=True, show_catalogs=True, show_spectrum=True, show_fit=dofit,
+                show_fitcircle=False, show_vrange=True, show_outflows=True, show_name=show_name,
+                interactive=False
+                ) 
 
 # def plot_stamps():
 
@@ -285,7 +285,7 @@ def plot_finder(cube,
         #Arguments to choose what to show.
         show_stamp=True, show_catalogs=True, show_fitcircle=True, show_outflows=True,
         show_spectrum=True, show_fit=True, show_vrange=True, show_legend=False,
-        show_redblue=False, show_contour=True, 
+        show_redblue=False, show_contour=True,
 
         #
 
@@ -309,6 +309,9 @@ def plot_finder(cube,
         blue_axvspan_kwargs=dict(facecolor='blue', alpha=0.2, ymin=0, ymax=1),
         red_axvspan_kwargs=dict(facecolor='red', alpha=0.2, ymin=0, ymax=1),
         
+        #draw roi
+        draw_roi=False, save_mask="roi_test",
+
         #Figure arguments.
         # ncols=2, nrows=1,
         fig=None, figname="finder.pdf",
@@ -489,7 +492,7 @@ def plot_finder(cube,
         else:
             redvspan = ax_spec.axvspan(red_vel.value, ax_spec.get_xlim()[1], **red_axvspan_kwargs)
     
-            
+
     fig.subplots_adjust(wspace=0.3)
 
     # if interactive:
@@ -527,6 +530,11 @@ def plot_finder(cube,
         # fig.canvas.draw()
 
         # fig.show()
+
+    if draw_roi:
+        my_roi = RoiPoly(color='r')
+        plt.show()
+        np.save(save_mask, my_roi.get_mask(cube.moment0()))
 
     # raise
     if savefig:
@@ -696,12 +704,10 @@ def rotate_vector(v, angle, anchor=[0,0]):
     ny = ny + anchor[1]
     return [nx, ny]
 
-
 # def rotate_arrow(x, y, dx, dy, angle=0):
 #     """
 #     rotate an arrow going from x,y to x+dx,y+dy by angle in degrees.
 #     """
-    
 
 def plot_arrows(catalog="../catalogs/outflows_nro45m_new.csv", wcs=None, ax=None, plot_file="plot_catalog_arrows.pdf",
         ra_colname="RA_J2000", dec_colname="DEC_J2000", name_colname="Number", length=0.1, pa_colname="PA",
@@ -743,16 +749,6 @@ def plot_arrows(catalog="../catalogs/outflows_nro45m_new.csv", wcs=None, ax=None
     # plt.clf()
 
     return ax
-
-
-        
-
-
-
-    
-
-    
-    
 
 def plot_catalog(catalog, wcs=None, ax=None, plot_file="plot_catalog.pdf",
         ra_colname="RAJ2000", dec_colname="DEJ2000",
@@ -906,17 +902,29 @@ def plot_redblue(cube, ax=None, plot_file="plot_redblue.pdf",
     else:
         return ax
 def fit_gaussian(x, y, autoguess=False, n_models=1, gaussian_kwargs={"amplitude":1., "mean":0, "stddev":1.},
-                 fit_func=fitting.LevMarLSQFitter(),
-                 fit_kwargs={}):
+                 fit_func=fitting.LevMarLSQFitter(), find_peaks_kwargs=dict(height=1., width=2., rel_height=0.5),
+                 fit_kwargs={}, not_nan=True):
 
     """
     Adjust n_models to > 1 to fit n gaussians to spectrum.
 
     """
-    if n_models > 1 or np.size(gaussian_kwargs["mean"]) > 1:
+    if n_models > 1:
         if autoguess:
-            print("Autoguess is not yet implemented for multiple gaussian fitting.")
-            raise
+            # print("Autoguess is not yet implemented for multiple gaussian fitting.")
+            # raise
+            from scipy.signal import find_peaks, peak_widths
+            peaks, _ = find_peaks(y, **find_peaks_kwargs)
+            i_highpeaks = y[peaks].argsort()[-int(n_models):]
+            peaks = peaks[i_highpeaks]
+            fwhm_peaks = peak_widths(y, peaks, rel_height=0.5)[0] * x.diff()[0]
+            stddev_peaks = fwhm_peaks / 2.355
+            amp_peaks = y[peaks]
+            mean_peaks = x[peaks]
+            gaussian_kwargs={"amplitude":amp_peaks,
+                             "mean":mean_peaks,
+                             "stddev":stddev_peaks}
+            print(gaussian_kwargs)
         
         try:
             y_unit = u.utils.quantity_asanyarray(gaussian_kwargs["amplitude"]).unit
@@ -936,7 +944,7 @@ def fit_gaussian(x, y, autoguess=False, n_models=1, gaussian_kwargs={"amplitude"
             if np.size(val) == 1:
                 val = list([val]) * int(n_models)
                 gaussian_kwargs[key] = val
-                
+
         g_list = []
         for imodel in range(n_models):
             kwargs = dict([(key, gaussian_kwargs[key][imodel].value) for key in gaussian_kwargs.keys()])
@@ -944,17 +952,22 @@ def fit_gaussian(x, y, autoguess=False, n_models=1, gaussian_kwargs={"amplitude"
         
         
         g_sum = np.sum(g_list)
+        # print(x,y)
+        if not_nan:
+            x, y = x[~np.isnan(y)], y[~np.isnan(y)]
         g_fit = fit_func(g_sum, x, y, **fit_kwargs)
-        
+        print(g_fit)
     else:
         if autoguess:
-            gaussian_kwargs={"amplitude":y.max() - y.min(),
-                    "mean":x[y.argmax()],
-                    "stddev":abs(x[y.argmax()] - x[y.argmin()])}
+            gaussian_kwargs={"amplitude":np.nanmax(y)- np.nanmin(y),
+                    "mean":x[np.nanargmax(y)],
+                    "stddev":abs(x[np.nanargmax(y)] - x[np.nanargmin(y)])}
             print("Guessing these parameters: ", gaussian_kwargs)
         g_init = models.Gaussian1D(**gaussian_kwargs)
+        if not_nan:
+            x, y = x[~np.isnan(y)], y[~np.isnan(y)]
         g_fit = fit_func(g_init, x, y, **fit_kwargs) 
-        
+    print(fit_func.fit_info['param_cov']) 
     return g_fit
 
 def extract_subcube(cube, region_class=CircleSkyRegion, region_kwargs={}):
@@ -981,6 +994,7 @@ def extract_subcube(cube, region_class=CircleSkyRegion, region_kwargs={}):
     cube = read_cube(cube)
     region = region_class(**region_kwargs)
     cube = cube.subcube_from_regions([region])
+
 
     return cube
 
