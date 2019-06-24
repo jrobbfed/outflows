@@ -319,12 +319,14 @@ def rms_mom0(cube, channel_rms=0.86*u.K):
         rms_mom0 =  channel_width * np.sqrt(cube.spectral_axis.size * channel_rms ** 2.)
         return rms_mom0 
 
-def rms(cube=None, velocity_range=[[-3.,-0.1], [19.,20.]]*u.km/u.s,
+def rms(cube=None, velocity_range=[[-2.,-0.], [18.,20.]]*u.km/u.s, sigma_clipped=False,
+    sigma_clip_kwargs={},
     return_map=False):
     """
     Returns 2D array (or one value) of the standard deviation of a spectral cube,
     calculated only in the emission-free channels.
     """
+    from astropy.stats import sigma_clipped_stats
     if velocity_range.ndim == 1:
         channel_range = [cube.closest_spectral_channel(v) for v in velocity_range]
         emissionless_channels = np.arange(channel_range[0], channel_range[1]+1)
@@ -341,6 +343,11 @@ def rms(cube=None, velocity_range=[[-3.,-0.1], [19.,20.]]*u.km/u.s,
     if return_map:
         rms_map = np.nanstd(emissionless_cube, axis=0)
         return rms_map
+
+    elif sigma_clipped:
+        mean, median, rms = sigma_clipped_stats(emissionless_cube, **sigma_clip_kwargs)
+        return rms
+
     else:
         rms = np.nanstd(emissionless_cube)
         return rms
@@ -476,7 +483,7 @@ def opacity_correct_mom0(cube_thick, cube_thin, abundance_ratio=62., return_opac
 def fit_parabola(x, y, x_shift=0., fit_xrange=None, autoguess=True,
                 poly_kwargs={}, fix_minima=True,
                 fitfunc=fitting.LinearLSQFitter,
-                weights=None,
+                weights=None, ignore_nan=True,
                 fit_kwargs={},
                 shift_back=True):
     if autoguess:
@@ -485,6 +492,14 @@ def fit_parabola(x, y, x_shift=0., fit_xrange=None, autoguess=True,
 
     p_init = models.Polynomial1D(2, **poly_kwargs)
     fitter = fitfunc()
+    if ignore_nan:
+        i_notnan = ~np.isnan(y)
+        x = x[i_notnan]
+        y = y[i_notnan]
+        try:
+            weights = weights[i_notnan]
+        except:
+            pass
     p_fit = fitter(p_init, x - x_shift, y, weights=weights, **fit_kwargs)
     # print(p_init, p_fit)
     if shift_back:
@@ -552,14 +567,15 @@ def cube_ratio(cubes=[None, None], rms=[None, None], return_ratiorms=True):
     else:
         return cube_ratio
 
-def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62.,
+def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62., min_pix=0,
     snr_cutoff=0., rms_thick=0.86*u.K, rms_thin=0.39*u.K, calc_rms=False,
     empty_velocity_range=[[-2.,0], [18.,20.]]*u.km/u.s, vsys=7*u.km/u.s,
-
+    weighted_average=True,
     plot_ratio=None, plot_xlim=[0,18], plot_ylim=[0,20], errorbar_kwargs=dict(marker='s', ls=''),
     plot_kwargs=dict(),
-    weighted_fit=True, fixed_fit=True,
-    fit_range=[6, 8]*u.km/u.s, fit_kwargs=dict(autoguess=True, shift_back=True),
+    weighted_fit=True, fixed_fit=True, return_ratio=False,
+    fit_range=[6, 8]*u.km/u.s, auto_range=False, dv_range = 2*u.km/u.s,
+    fit_kwargs=dict(autoguess=True, shift_back=True),
     fit=True, fit_func="parabola", return_factor=False):
     """
     Correct an optically thick emission line cube using an (assumed) optically
@@ -576,20 +592,39 @@ def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62.,
         rms_thick = rms(cube_thick, empty_velocity_range)
         rms_thin = rms(cube_thin, empty_velocity_range)
 
-    cube_thick_ratiomask = cube_thick.with_mask(cube_thick > snr_cutoff*rms_thick).with_mask(cube_thin > snr_cutoff*rms_thin)
-    cube_thin_ratiomask = cube_thin.with_mask(cube_thin > snr_cutoff*rms_thin).with_mask(cube_thick > snr_cutoff*rms_thick)
-
+    if snr_cutoff:
+        cube_thick_ratiomask = cube_thick.with_mask(cube_thick > snr_cutoff*rms_thick).with_mask(cube_thin > snr_cutoff*rms_thin)
+        cube_thin_ratiomask = cube_thin.with_mask(cube_thin > snr_cutoff*rms_thin).with_mask(cube_thick > snr_cutoff*rms_thick)
+    else:
+        cube_thick_ratiomask = cube_thick
+        cube_thin_ratiomask = cube_thin
+    print("thick min: ", cube_thick_ratiomask.min(), "thin min: ", cube_thin_ratiomask.min())
     ratio, ratio_rms = cube_ratio(
         cubes=[cube_thick_ratiomask, cube_thin_ratiomask],
         rms=[rms_thick, rms_thin],
         return_ratiorms=True)
+    print("ratio min: ", ratio.min())
 
     weights = ratio_rms ** -2
 
-    ratiospec, ratiospec_rms = average_spectrum(ratio, weights=weights)
+    if weighted_average:
+        ratiospec, ratiospec_rms = average_spectrum(ratio, weights=weights)
+    else:
+        ratiospec, ratiospec_rms = average_spectrum(ratio)
+
+    if min_pix:
+        count_pix = np.count_nonzero(~ratio.apply_numpy_function(np.isnan), axis=(1,2))
+        print(count_pix)
+        lt_min_pix = count_pix < min_pix
+        print(ratiospec)
+        ratiospec[lt_min_pix] = np.nan
+        ratiospec_rms[lt_min_pix] = np.nan
 
     if fit:
         #Fit with quadratic
+        if auto_range:
+            vmin = ratiospec.spectral_axis[np.nanargmin(ratiospec)]
+            fit_range = u.Quantity([vmin - dv_range, vmin + dv_range])
         ii_specfit = (ratiospec.spectral_axis > fit_range[0]) & (ratiospec.spectral_axis < fit_range[1])
 
         if fit_func == "parabola":
@@ -646,10 +681,14 @@ def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62.,
         try:
             plt.savefig(plot_ratio)
         except:
-            plt.show()
+            pass
     if return_factor:
         return cube_correct, factor
-    return cube_correct
+
+    elif return_ratio:
+        return ratiospec, ratiospec_rms
+    else:
+        return cube_correct
 
 def column_density_H2(cube, Tex,
     molecule="12co", transition="1-0",
@@ -741,7 +780,7 @@ def dmdv(cube, molecule='12co', Tex=30*u.K, distance=414*u.pc,
 def ambient_correct(dmdv, n_models=1, autoguess=True, 
     find_peaks_kwargs=dict(height=0.1, width=2, rel_height=0.5),
     gaussian_kwargs=dict(), fit_func=fitting.LevMarLSQFitter(),
-    plot=False):
+    plot=False, return_fit=False):
     from stamp import fit_gaussian
     from spectral_cube import OneDSpectrum
 
@@ -774,8 +813,10 @@ def ambient_correct(dmdv, n_models=1, autoguess=True,
         plt.xlabel("v [km/s]")
         plt.ylabel(r"dM/dv [M$_\odot$ (km/s)$^{-1}$]")
 
-
-    return dmdv_out
+    if return_fit:
+        return dmdv_out, dmdv_fit
+    else:
+        return dmdv_out
 
 
 def sum_dmdv(dmdv, vsys=None, vrange='auto', dv=1*u.km/u.s,
@@ -956,9 +997,20 @@ def vmax_cube(cube, vsys=0*u.km/u.s, snr=0, min_pixels=1,
             v_out_red = -vsys + cube.spectral_axis
     #Selects channels where at least min_pixels are detected to the given snr threshold. 
     chans_detected = np.count_nonzero(~cube.apply_numpy_function(np.isnan), axis=(1,2)) >= min_pixels
+    print(chans_detected)
+    print(v_out_red)
 
-    vmax_blue = min(v_out_blue[(~chans_detected) & (v_out_blue > 0)]) - cube.spectral_axis.diff()[0]
-    vmax_red = min(v_out_red[(~chans_detected) & (v_out_red > 0)]) - cube.spectral_axis.diff()[0]
+    try:
+        vmax_blue = min(v_out_blue[(~chans_detected) & (v_out_blue > 0)]) - cube.spectral_axis.diff()[0]
+    except ValueError:
+        print("outflow is detected at all blue channels, returning lower limit of vmax_blue.")
+        vmax_blue = max(v_out_blue)
+
+    try:
+        vmax_red = min(v_out_red[(~chans_detected) & (v_out_red > 0)]) - cube.spectral_axis.diff()[0]
+    except ValueError:
+        print("outflow is detected at all red channels, returning lower limit of vmax_red.")
+        vmax_red = max(v_out_red)
     # vmax_blue = cube.spectral_axis[]
 
     if plot:
@@ -999,7 +1051,9 @@ def outflow_angles(cube, pa_guess=0*u.deg, autoguess=False,
     coord_zero=None, plot=False, bins='knuth',
     plothist_kwargs=dict(),
     plotfit_kwargs=dict(),
-    fit_kwargs=dict(autoguess=True)):
+    fit_kwargs=dict(autoguess=True),
+    return_error=False,
+    count_voxels=False):
     """
     Input a cube with outflow lobe mask.
     """
@@ -1020,6 +1074,7 @@ def outflow_angles(cube, pa_guess=0*u.deg, autoguess=False,
 
     if autoguess:
         mom0 = cube.moment0()
+        # print("In outflow_angle autoguess: ", mom0)
         ra_peak = ra[mom0 == np.nanmax(mom0)][0]
         dec_peak = dec[mom0 == np.nanmax(mom0)][0]
         pa_guess = np.arctan2(ra_peak.value, dec_peak.value)*180*u.deg/(np.pi)
@@ -1036,27 +1091,43 @@ def outflow_angles(cube, pa_guess=0*u.deg, autoguess=False,
     pa_arr_rot = pa_arr_rot[~np.isnan(cube[0])]
 
     if plot:
-        hist, bin_edges, patches = plot_hist(pa_arr_rot.flatten()*180/np.pi, bins='knuth', **plothist_kwargs)
+        hist, bin_edges, patches = plot_hist(pa_arr_rot.flatten()*180/np.pi, bins=bins, **plothist_kwargs)
     else:
-        hist, bin_edges = hist(pa_arr_rot.flatten()*180/np.pi, bins='knuth')
+        hist, bin_edges = hist(pa_arr_rot.flatten()*180/np.pi, bins=bins)
 
     bin_centers = np.array([0.5 * (bin_edges[i] + bin_edges[i+1]) for i in range(len(bin_edges)-1)])
 
-    g = fit_gaussian(bin_centers, hist, **fit_kwargs)
+    if return_error:
+        g, cov = fit_gaussian(bin_centers, hist, return_cov=True, **fit_kwargs)
+    else:  
+        g = fit_gaussian(bin_centers, hist, **fit_kwargs)
+
 
     position_angle = pa_guess + g.mean*u.deg
-
+    if return_error:
+        e_position_angle = np.sqrt(cov[1,1])*u.deg
     fwqm = 3.3302*g.stddev
     opening_angle = fwqm*u.deg
+    if return_error:
+        e_opening_angle = 3.3302*np.sqrt(cov[2,2])*u.deg
 
     if plot:
-        plt.plot(bin_centers, g(bin_centers), **plotfit_kwargs)
-        plt.xlabel("PA - {:.2g} [deg]".format(pa_guess))
+        x = np.linspace(bin_centers[0], bin_centers[-1], 100)
+        y = g(x)
+        plt.plot(x, y, **plotfit_kwargs)
+        plt.xlabel("PA - {: .2g} [deg]".format(pa_guess))
         plt.ylabel("Pixels")
 
-    return position_angle, opening_angle
 
+    if return_error:
+        return position_angle, opening_angle, e_position_angle, e_opening_angle
+    else:
+        return position_angle, opening_angle
 
+# def parse_vels():
+#     """
+#     Read table and parse the columns, calculating the red/blue velocity
+#     """
 
 def mass(column_density, distance=414*u.pc, molecule='H2',
     return_map=False, mass_unit=u.Msun):

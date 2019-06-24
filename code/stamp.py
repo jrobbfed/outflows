@@ -271,8 +271,8 @@ def plot_finder(cube,
         blue_levels=np.arange(5., 50, 5), red_levels=np.arange(5., 50, 5),
         channel_sigma=1.*u.K, auto_sigma=True, sigma_contours=True,
         red_sigma=None, blue_sigma=None, 
-        blue_contour_kwargs={"colors":'blue', "linewidths":1},
-        red_contour_kwargs={'colors':'red', "linewidths":1},
+        blue_contour_kwargs={"colors":'blue', "linewidths":1, 'alpha':0.6, 'zorder':3},
+        red_contour_kwargs={'colors':'red', "linewidths":1, 'alpha':0.6, 'zorder':3},
         annotate=False,
 
         #Arguments for showing red/blue moment0 maps.
@@ -283,7 +283,7 @@ def plot_finder(cube,
         # xlabel="RA [J2000]", ylabel="DEC [J2000]",
 
         #Arguments to choose what to show.
-        show_stamp=True, show_catalogs=True, show_fitcircle=True, show_outflows=True,
+        show_stamp=True, show_catalogs=True, show_fitcircle=False, show_outflows=False,
         show_spectrum=True, show_fit=True, show_vrange=True, show_legend=False,
         show_redblue=False, show_contour=True,
 
@@ -479,8 +479,8 @@ def plot_finder(cube,
 
         ax_fit.plot(spec.spectral_axis.value, gauss(spec.spectral_axis.value),
                 label="Fit", **plot_fit_kwargs)
-    ax_spec.legend()
 
+        ax_spec.legend()
     if show_vrange:
         if type(blue_vel.value) is np.ndarray:
             bluevspan = ax_spec.axvspan(blue_vel[0].value, blue_vel[1].value, **blue_axvspan_kwargs)
@@ -903,17 +903,17 @@ def plot_redblue(cube, ax=None, plot_file="plot_redblue.pdf",
         return ax
 def fit_gaussian(x, y, autoguess=False, n_models=1, gaussian_kwargs={"amplitude":1., "mean":0, "stddev":1.},
                  fit_func=fitting.LevMarLSQFitter(), find_peaks_kwargs=dict(height=1., width=2., rel_height=0.5),
-                 fit_kwargs={}, not_nan=True):
+                 fit_kwargs={}, not_nan=True, return_cov=False):
 
     """
     Adjust n_models to > 1 to fit n gaussians to spectrum.
 
     """
+    from scipy.signal import find_peaks, peak_widths
     if n_models > 1:
         if autoguess:
             # print("Autoguess is not yet implemented for multiple gaussian fitting.")
             # raise
-            from scipy.signal import find_peaks, peak_widths
             peaks, _ = find_peaks(y, **find_peaks_kwargs)
             i_highpeaks = y[peaks].argsort()[-int(n_models):]
             peaks = peaks[i_highpeaks]
@@ -959,16 +959,36 @@ def fit_gaussian(x, y, autoguess=False, n_models=1, gaussian_kwargs={"amplitude"
         print(g_fit)
     else:
         if autoguess:
-            gaussian_kwargs={"amplitude":np.nanmax(y)- np.nanmin(y),
-                    "mean":x[np.nanargmax(y)],
-                    "stddev":abs(x[np.nanargmax(y)] - x[np.nanargmin(y)])}
-            print("Guessing these parameters: ", gaussian_kwargs)
+
+            try:
+            # from scipy.signal import find_peaks, peak_widths
+                peaks, _ = find_peaks(y, **find_peaks_kwargs)
+                i_highpeaks = y[peaks].argsort()[-1:]
+                peaks = peaks[i_highpeaks]
+                print(peaks)
+                fwhm_peaks = peak_widths(y, peaks, rel_height=0.5)[0] * (x[1]-x[0])
+                stddev_peaks = fwhm_peaks / 2.355
+                amp_peaks = y[peaks]
+                mean_peaks = x[peaks]
+                gaussian_kwargs={"amplitude":amp_peaks[0],
+                                 "mean":mean_peaks[0],
+                                 "stddev":stddev_peaks[0]}
+                print(gaussian_kwargs)
+            except:
+                gaussian_kwargs={"amplitude":np.nanmax(y)- np.nanmin(y),
+                        "mean":x[np.nanargmax(y)],
+                        "stddev":abs(x[np.nanargmax(y)] - x[np.nanargmin(y)])}
+                print("Guessing these parameters: ", gaussian_kwargs)
         g_init = models.Gaussian1D(**gaussian_kwargs)
         if not_nan:
             x, y = x[~np.isnan(y)], y[~np.isnan(y)]
         g_fit = fit_func(g_init, x, y, **fit_kwargs) 
+
     print(fit_func.fit_info['param_cov']) 
-    return g_fit
+    if return_cov:
+        return g_fit, fit_func.fit_info['param_cov']
+    else:
+        return g_fit
 
 def extract_subcube(cube, region_class=CircleSkyRegion, region_kwargs={}):
     """
