@@ -1,0 +1,115 @@
+SIMPLE  =                    T / conforms to FITS standard                      
+BITPIX  =                  -32 / array data type                                
+NAXIS   =                    3                                                  
+NAXIS1  =                 1799                                                  
+NAXIS2  =                 1835                                                  
+NAXIS3  =                   30                                                  
+BLANK   =                   -1  /                                               
+BUNIT   = 'K       '  /                                                         
+TELESCOP= 'OVRO    '  /                                                         
+CELLSCAL= 'CONSTANT'  /                                                         
+RESTFREQ=    1.09782160000E+11  /                                               
+BMAJ    =     0.00291638891213                                                  
+BMIN    =     0.00215055583976                                                  
+BPA     =       -0.40000000596                                                  
+EPOCH   =    2.00000000000E+03  /                                               
+BTYPE   = 'intensity'  /                                                        
+HISTORY RADESYS = 'FK5     '                                                    
+HISTORY PC01_01 =   1.000000000000E+00                                          
+HISTORY PC02_01 =   0.000000000000E+00                                          
+HISTORY PC03_01 =   0.000000000000E+00                                          
+HISTORY PC04_01 =   0.000000000000E+00                                          
+HISTORY PC01_02 =   0.000000000000E+00                                          
+HISTORY PC02_02 =   1.000000000000E+00                                          
+HISTORY PC03_02 =   0.000000000000E+00                                          
+HISTORY PC04_02 =   0.000000000000E+00                                          
+HISTORY PC01_03 =   0.000000000000E+00                                          
+HISTORY PC02_03 =   0.000000000000E+00                                          
+HISTORY PC03_03 =   1.000000000000E+00                                          
+HISTORY PC04_03 =   0.000000000000E+00                                          
+HISTORY PC01_04 =   0.000000000000E+00                                          
+HISTORY PC02_04 =   0.000000000000E+00                                          
+HISTORY PC03_04 =   0.000000000000E+00                                          
+HISTORY PC04_04 =   1.000000000000E+00                                          
+HISTORY CUNIT1  = 'deg     '                                                    
+HISTORY CUNIT2  = 'deg     '                                                    
+HISTORY CUNIT3  = 'm/s     '                                                    
+HISTORY CUNIT4  = '        '                                                    
+HISTORY SPECSYS = 'LSRK    '           /Spectral reference frame                
+HISTORY casacore non-standard usage: 4 LSD, 5 GEO, 6 SOU, 7 GAL                 
+HISTORY TIMESYS = 'UTC     '                                                    
+HISTORY OBSGEO-X=  -4.481928766711E+02                                          
+HISTORY OBSGEO-Y=  -8.329764894659E+02                                          
+HISTORY OBSGEO-Z=   7.188467363715E+02                                          
+HISTORY CASA START LOGTABLE                                                     
+HISTORY 2017-11-25T03:49:54 INFO SRCCODE='::image::_hanning'                    
+HISTORY Ran ia.hanning                                                          
+HISTORY 2017-11-25T03:49:54 INFO SRCCODE='::image::_hanning'                    
+HISTORY ia.hanning(outfile="han1_mask_imfit_c18o_pix_2_Tmb.im", region="", mask=
+HISTORY >"", axis=2, drop=true, overwrite=true, stretch=false, dmethod="mean")  
+HISTORY 2017-11-25T03:49:54 INFO SRCCODE='::ImageDecimator::decimate'           
+HISTORY Decimated axis 2 by keeping only every nth plane, where n=2.            
+HISTORY 2017-11-25T03:49:54 INFO SRCCODE='::ImageDecimator::decimate'           
+HISTORY Averaging every i to i*(n-1) planes in the input image to form plane i i
+HISTORY >n the output image.                                                    
+HISTORY CASA END LOGTABLE                                                       
+HISTORY FITS: Miriad fits: CVS Revision 1.24, 2013/03/14 17:33:00 UTC           
+HISTORY FITS: Executed on: 2017-11-26T20:25:25.0                                
+HISTORY FITS: Command line inputs follow:                                       
+HISTORY FITS:   in=han1_mask_imfit_c18o_pix_2_Tmb.fits                          
+HISTORY FITS:   out=han1_mask_imfit_c18o_pix_2_Tmb.mir                          
+HISTORY FITS:   op=xyin                                                         
+HISTORY IMSUB: Miriad Imsub: version 1.0 3-dec-02                               
+HISTORY IMSUB: Executed on: 2017-11-26T21:05:12.0                               
+HISTORY IMSUB: Command line inputs follow:                                      
+HISTORY IMSUB:   in=han1_mask_imfit_c18o_pix_2_Tmb.mir                          
+HISTORY IMSUB:   out=han1_mask_imfit_c18o_pix_2_Tmb_noEdges3.mir                
+HISTORY IMSUB:   region=polygon(63,51,994,51,994,425,1198,425,1198,666,1407,666,
+HISTORY 61,3602,1028,3602,1028,3408,880,3408,880,2896,753,2896,753,1759,679,1759
+HISTORY 9,359,555,137,533,137,399,63,384,63,51)                                 
+HISTORY IMSUB: Miriad Imsub: version 1.0 3-dec-02                               
+HISTORY IMSUB: Executed on: 2018-01-17T19:15:40.0                               
+HISTORY IMSUB: Command line inputs follow:                                      
+HISTORY IMSUB:   in=han1_mask_imfit_c18o_pix_2_Tmb_noEdges.mir                  
+HISTORY IMSUB:   out=han1_mask_imfit_c18o_pix_2_Tmb_noEdges_south.mir           
+HISTORY IMSUB:   region=box(0,0,1799,1835)                                      
+HISTORY IMSUB: Miriad Imsub: version 1.0 3-dec-02                               
+HISTORY IMSUB: Executed on: 2018-01-17T19:18:19.0                               
+HISTORY IMSUB: Command line inputs follow:                                      
+HISTORY IMSUB:   in=han1_mask_imfit_c18o_pix_2_Tmb_noEdges_south.mir            
+HISTORY IMSUB:   out=han1_mask_imfit_c18o_pix_2_Tmb_noEdges_south_v4.7-11.1.mir 
+HISTORY IMSUB:   region=images(21,50)                                           
+HISTORY FITS: Miriad fits: fits: CVS Revision 1.24, 2013/03/14 17:33:00 UTC     
+HISTORY FITS: Executed on: 18JAN17:19:18:35.0                                   
+HISTORY FITS: Command line inputs follow:                                       
+HISTORY FITS:    in=han1_mask_imfit_c18o_pix_2_Tmb_noEdges_south_v4.7-11.1.mir  
+HISTORY FITS:    out=han1_mask_imfit_c18o_pix_2_Tmb_noEdges_south_v4.7-11.1.fits
+HISTORY FITS:    op=xyout                                                       
+HISTORY FITS: NOTE: Use options=varwt if loading into Miriad                    
+ORIGIN  = 'Miriad fits: CVS Revision 1.24, 2013/03/14 17:33:00 UTC'  /          
+BEAM    = 'Beam: BMAJ=10.499000083668 arcsec BMIN=7.742001023136 arcsec &'      
+CONTINUE  'BPA=-0.40000000596 deg'                                              
+WCSAXES =                    3                                                  
+CRPIX1  =               1018.0                                                  
+CRPIX2  =               1814.0                                                  
+CRPIX3  =                -19.5                                                  
+CDELT1  =   -0.000555555576728                                                  
+CDELT2  =    0.000555555576728                                                  
+CDELT3  =        220.028195867                                                  
+CUNIT1  = 'deg     '                                                            
+CUNIT2  = 'deg     '                                                            
+CUNIT3  = 'm/s     '                                                            
+CTYPE1  = 'RA---SIN'                                                            
+CTYPE2  = 'DEC--SIN'                                                            
+CTYPE3  = 'VRAD    '                                                            
+CRVAL1  =    83.87420521440001                                                  
+CRVAL2  =       -5.81309140504                                                  
+CRVAL3  =         259.95804083                                                  
+LONPOLE =                180.0                                                  
+LATPOLE =       -5.81309140504                                                  
+RESTFRQ =       109782160000.0                                                  
+RADESYS = 'FK5     '                                                            
+EQUINOX =               2000.0                                                  
+MJD-OBS =      46248.252576389                                                  
+DATE-OBS= '1985-07-02T06:03:42.6'                                               
+END                                                                             
