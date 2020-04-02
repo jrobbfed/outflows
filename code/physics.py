@@ -11,8 +11,12 @@ from astropy.coordinates import SkyCoord
 from regions import CircleSkyRegion, RectangleSkyRegion
 from astropy.modeling import fitting, models
 from scipy.optimize import curve_fit
+import matplotlib
+matplotlib.style.use('paper')
 #Distance to Orion (Menten et al.)
-dist = 414*u.pc
+# dist = 414*u.pc
+#Grossschedl et al. 2018 distance
+dist = 400.*u.pc
 #CARMA-NRO Orion Map Noise Values
 sig12, sig13, sig18 = 0.86*u.K, 0.64*u.K, 0.47*u.K #From Kong et al. 2018a
 
@@ -49,7 +53,7 @@ def main():
 
 def calc_physics(ra=None, dec=None, r=0.17*u.pc, dr=0.05*u.pc,
  vexp=4*u.km/u.s, v0=14*u.km/u.s, cube_12co=None, cube_13co=None,
- dist=414*u.pc, snr_cutoff=5., shell_snr_cutoff=3., shell=True,
+ dist=dist, snr_cutoff=5., shell_snr_cutoff=3., shell=True,
  plot=False, linewidth_mode='fwhm',
  average_Tex=True):
     """
@@ -176,7 +180,7 @@ def calc_physics(ra=None, dec=None, r=0.17*u.pc, dr=0.05*u.pc,
     shell_nH2_13co = column_density_H2(shell_13co, Tex=Tex, molecule="13co")
 
     #print(shell_nH2_12co.shape, shell_nH2_13co.shape)
-    print(np.nansum([shell_nH2_12co, shell_nH2_13co], axis=0), shell_nH2_12co.unit)
+    # print(np.nansum([shell_nH2_12co, shell_nH2_13co], axis=0), shell_nH2_12co.unit)
     shell_nH2 = Projection(np.nansum([shell_nH2_12co, shell_nH2_13co], axis=0),
      header=shell_nH2_12co.header, wcs=shell_nH2_12co.wcs, unit=shell_nH2_12co.unit,
      dtype=shell_nH2_12co.dtype, meta=shell_nH2_12co.meta, mask=shell_nH2_12co.mask)
@@ -198,14 +202,14 @@ def calc_physics(ra=None, dec=None, r=0.17*u.pc, dr=0.05*u.pc,
 
     ### Calculate Mass, Momentum, and Energy of Shell!
     if shell:
-        shell_mass = mass(shell_nH2, distance=414*u.pc, molecule='H2',
+        shell_mass = mass(shell_nH2, distance=dist, molecule='H2',
          mass_unit=u.Msun)
         shell_momentum = momentum(shell_mass, vexp)
         shell_energy = energy(shell_mass, vexp, fwhm_to_3Dsigma=False)
         shell_luminosity = (shell_energy / (r / vexp)).to(u.erg/u.s)
     else:
 
-        mass_map = mass(shell_nH2, distance=414*u.pc, molecule='H2',
+        mass_map = mass(shell_nH2, distance=dist, molecule='H2',
             mass_unit=u.Msun, return_map=True)
         if linewidth_mode == "fwhm":
             vel_map = subcube_shell_13co.linewidth_fwhm()
@@ -302,10 +306,17 @@ def cube_Tex(cube, thick=True, snr_cutoff=0,
         plt.figure()
         if average_first:
             vel = cube.spectral_axis.to(u.km/u.s).value
-            plt.plot(vel, average_spec, label='Average Spectrum')
-            plt.plot([vel[0], vel[-1]], [Tpeak.value, Tpeak.value], '--', label='Tpeak')
-            plt.xlabel("velocity [km/s]")
-            plt.ylabel("T [K]")
+            plt.plot(vel, average_spec, label=r"$^{12}$CO", color='black')
+            # plt.plot([vel[0], vel[-1]], [Tpeak.value, Tpeak.value], '--',
+             #label=r'T$_{\rm peak}$ = '+str(np.round(Tpeak.value,1))+' K'
+             # )
+            plt.annotate(r'T$_{\rm peak}$ = '+str(np.round(Tpeak.value,1))+' K',
+                (vel[np.argmax(average_spec)], Tpeak.value),
+                (0,Tpeak.value),
+                arrowprops=dict(arrowstyle='simple', fc='black'), va='top')
+            plt.legend()
+            plt.xlabel(r"v$_{\rm LSR}$ (km s$^{-1}$)")
+            plt.ylabel(r"T$_{\rm MB}$ (K)")
         else:
             plt.imshow(cube.max(axis=0).data, interpolation='none')
             plt.title("Tpeak Map: Average is {}".format(Tpeak))
@@ -379,7 +390,7 @@ def sigma_mom0(cube, channel_sigma=sig12):
     return sigma_mom0 
 
 def average_spectrum(cube, axis=(1,2), weights=None, ignore_nan=True,
-                    return_std=True):
+                    return_std=True, divide_std_by_n=False):
     """
     Calculate the (weighted) average spectrum in a spectral cube
     Optionally calculate and return the (weighted) standard deviation
@@ -409,6 +420,11 @@ def average_spectrum(cube, axis=(1,2), weights=None, ignore_nan=True,
             spec_std = ((resids * weights).sum(axis) / weights.sum(axis)) ** 0.5
         else:
             spec_std = cube.std(axis)
+
+        if divide_std_by_n:
+            a = ~cube.apply_numpy_function(np.isnan)
+            n = np.count_nonzero(a, axis=axis)
+            spec_std = spec_std/np.sqrt(n)
         
         return spec_mean, spec_std
     else:
@@ -570,7 +586,7 @@ def cube_ratio(cubes=[None, None], rms=[None, None], return_ratiorms=True):
 def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62., min_pix=0,
     snr_cutoff=0., rms_thick=0.86*u.K, rms_thin=0.39*u.K, calc_rms=False,
     empty_velocity_range=[[-2.,0], [18.,20.]]*u.km/u.s, vsys=7*u.km/u.s,
-    weighted_average=True,
+    weighted_average=True, divide_std_by_n=False,
     plot_ratio=None, plot_xlim=[0,18], plot_ylim=[0,20], errorbar_kwargs=dict(marker='s', ls=''),
     plot_kwargs=dict(),
     weighted_fit=True, fixed_fit=True, return_ratio=False,
@@ -604,19 +620,21 @@ def opacity_correct(cube_thick, cube_thin=None, abundance_ratio=62., min_pix=0,
         rms=[rms_thick, rms_thin],
         return_ratiorms=True)
     print("ratio min: ", ratio.min())
+    plt.imshow(ratio[42].data)
+    print(ratio.spectral_axis[42])
+    plt.show()
 
     weights = ratio_rms ** -2
 
     if weighted_average:
-        ratiospec, ratiospec_rms = average_spectrum(ratio, weights=weights)
+        ratiospec, ratiospec_rms = average_spectrum(ratio, weights=weights, divide_std_by_n=divide_std_by_n)
     else:
-        ratiospec, ratiospec_rms = average_spectrum(ratio)
-
+        ratiospec, ratiospec_rms = average_spectrum(ratio, divide_std_by_n=divide_std_by_n)
     if min_pix:
         count_pix = np.count_nonzero(~ratio.apply_numpy_function(np.isnan), axis=(1,2))
         print(count_pix)
         lt_min_pix = count_pix < min_pix
-        print(ratiospec)
+        # print(ratiospec)
         ratiospec[lt_min_pix] = np.nan
         ratiospec_rms[lt_min_pix] = np.nan
 
@@ -734,7 +752,9 @@ def column_density_H2(cube, Tex,
     factor = factor * Qrot_partial(Tex, B0_k, N=Qrot_order)\
      * np.exp(E_u_k/Tex) / beam_filling_factor / X_factor
 
-    # print(factor)
+    if factor.ndim == 3:
+        factor = factor[0]
+
     if moment0:
         return (cube.moment0() * factor).to(u.cm**-2)
     else:
@@ -756,7 +776,7 @@ def Qrot_partial(Tex, B0_k=2.765*u.K, N=100):
     return Qrot
 
 
-def dmdv(cube, molecule='12co', Tex=30*u.K, distance=414*u.pc,
+def dmdv(cube, molecule='12co', Tex=30*u.K, distance=dist,
     spectral_unit=u.km/u.s, mass_unit=u.Msun,
     return_cube=False):
     """
@@ -981,7 +1001,8 @@ def energy_dmdv(dmdv, vsys=None, vrange='auto', dv=1*u.km/u.s,
 
 def vmax_cube(cube, vsys=0*u.km/u.s, snr=0, min_pixels=1,
          empty_velocity_range=[-2,0]*u.km/u.s,
-         return_lobes=True, plot=False):
+         return_lobes=True, plot=False, plot_blue=True, plot_red=True,
+         plot_kwargs=dict()):
     """
     Returns the maximum outflow velocity on either side of vsys in the given cube.
     """
@@ -997,8 +1018,8 @@ def vmax_cube(cube, vsys=0*u.km/u.s, snr=0, min_pixels=1,
             v_out_red = -vsys + cube.spectral_axis
     #Selects channels where at least min_pixels are detected to the given snr threshold. 
     chans_detected = np.count_nonzero(~cube.apply_numpy_function(np.isnan), axis=(1,2)) >= min_pixels
-    print(chans_detected)
-    print(v_out_red)
+    # print(chans_detected)
+    # print(v_out_red)
 
     try:
         vmax_blue = min(v_out_blue[(~chans_detected) & (v_out_blue > 0)]) - cube.spectral_axis.diff()[0]
@@ -1014,13 +1035,15 @@ def vmax_cube(cube, vsys=0*u.km/u.s, snr=0, min_pixels=1,
     # vmax_blue = cube.spectral_axis[]
 
     if plot:
-        plt.plot(cube.spectral_axis.to(u.km/u.s), cube.mean((1,2)))
-        plt.axvline((vsys - vmax_blue).value, label=r"Blue v$_{max}$", ls=':', color='tab:blue')
-        plt.axvline((vsys + vmax_red).value,  label=r"Red v$_{max}$", ls=':', color='tab:red')
+        plt.plot(cube.spectral_axis.to(u.km/u.s)-vsys, cube.mean((1,2)), **plot_kwargs)
+        if plot_blue:
+            plt.axvline(-1*vmax_blue.value, label=r"Blue v$_{max}$", ls=':', color='tab:blue')
+        if plot_red:
+            plt.axvline(vmax_red.value,  label=r"Red v$_{max}$", ls=':', color='tab:red')
 
     return vmax_blue.to(u.km/u.s), vmax_red.to(u.km/u.s)
 
-def rmax_cube(cube, coord_zero=None, dist=414*u.pc, plot=False):
+def rmax_cube(cube, coord_zero=None, dist=dist, plot=False):
     """
     Calculates the maximum distance from a specific coordinate in a cube. If coord_zero
     is None, defaults to calculating the distanc from the central pixel. The cube should
@@ -1048,9 +1071,10 @@ def rmax_cube(cube, coord_zero=None, dist=414*u.pc, plot=False):
     return rmax
 
 def outflow_angles(cube, pa_guess=0*u.deg, autoguess=False,
-    coord_zero=None, plot=False, bins='knuth',
+    coord_zero=None, plot=False, plot_fwqm=False, bins='knuth', ax=None,
     plothist_kwargs=dict(),
     plotfit_kwargs=dict(),
+    plotfwqm_kwargs=dict(),
     fit_kwargs=dict(autoguess=True),
     return_error=False,
     count_voxels=False):
@@ -1091,9 +1115,12 @@ def outflow_angles(cube, pa_guess=0*u.deg, autoguess=False,
     pa_arr_rot = pa_arr_rot[~np.isnan(cube[0])]
 
     if plot:
-        hist, bin_edges, patches = plot_hist(pa_arr_rot.flatten()*180/np.pi, bins=bins, **plothist_kwargs)
+        if ax is None:
+            fig, ax = plt.subplots(1)
+        hist, bin_edges, patches = plot_hist(pa_arr_rot.flatten()*180/np.pi+pa_guess.value,
+         bins=bins, ax=ax, **plothist_kwargs)
     else:
-        hist, bin_edges = hist(pa_arr_rot.flatten()*180/np.pi, bins=bins)
+        hist, bin_edges = hist(pa_arr_rot.flatten()*180/np.pi+pa_guess.value, bins=bins)
 
     bin_centers = np.array([0.5 * (bin_edges[i] + bin_edges[i+1]) for i in range(len(bin_edges)-1)])
 
@@ -1103,7 +1130,7 @@ def outflow_angles(cube, pa_guess=0*u.deg, autoguess=False,
         g = fit_gaussian(bin_centers, hist, **fit_kwargs)
 
 
-    position_angle = pa_guess + g.mean*u.deg
+    position_angle = g.mean*u.deg
     if return_error:
         e_position_angle = np.sqrt(cov[1,1])*u.deg
     fwqm = 3.3302*g.stddev
@@ -1114,9 +1141,15 @@ def outflow_angles(cube, pa_guess=0*u.deg, autoguess=False,
     if plot:
         x = np.linspace(bin_centers[0], bin_centers[-1], 100)
         y = g(x)
-        plt.plot(x, y, **plotfit_kwargs)
-        plt.xlabel("PA - {: .2g} [deg]".format(pa_guess))
-        plt.ylabel("Pixels")
+        ax.plot(x, y, **plotfit_kwargs)
+        ax.set_xlabel("PA (deg)")
+        ax.set_ylabel("Pixels")
+
+        if plot_fwqm:
+            ax.plot([position_angle.value-opening_angle.value/2, position_angle.value+opening_angle.value/2],
+                    [g(position_angle.value-opening_angle.value/2),g(position_angle.value-opening_angle.value/2)],
+                    **plotfwqm_kwargs)
+
 
 
     if return_error:
@@ -1129,13 +1162,15 @@ def outflow_angles(cube, pa_guess=0*u.deg, autoguess=False,
 #     Read table and parse the columns, calculating the red/blue velocity
 #     """
 
-def mass(column_density, distance=414*u.pc, molecule='H2',
-    return_map=False, mass_unit=u.Msun):
+def mass(column_density, distance=dist, molecule='H2',
+    return_map=False, mass_unit=u.Msun,
+    m_H=1.674e-24*u.gram):
     """
     If column_density is a cube, return_map will return mass cube.
     """
     if molecule == 'H2':
-        mass_per_molecule = 2.34e-24*u.gram 
+        mean_molecular_weight = 2.8
+        mass_per_molecule = mean_molecular_weight*m_H
 
     pixel_angle = abs(column_density.header['CDELT2']) * u.deg
     pixel_area = (pixel_angle.to(u.radian).value * distance)**2.
